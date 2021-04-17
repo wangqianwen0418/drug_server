@@ -22,13 +22,13 @@ from functools import lru_cache
 class ModelLoader():
     def __init__(self, data_path=None):
         if (not data_path):
-            self.data_path = os.path.join(
-                os.path.dirname(__file__), 'collab_delivery/')
+            raise ValueError('data path is not provided')
         else:
             self.data_path = data_path
 
         if not os.path.isdir(self.data_path):
-            raise IOError('data path {} does not exist'.format(self.data_path))
+            if 's3' not in self.data_path:
+                raise IOError('data path {} does not exist'.format(data_path))
 
         self.df_train = None
         self.predictions = None
@@ -39,10 +39,12 @@ class ModelLoader():
         load stored prediction results
         '''
         data_path = self.data_path
-        with open(os.path.join(data_path, 'result.pkl'), 'rb') as f:
-            results = pickle.load(f)
+        # with open(os.path.join(data_path, 'result.pkl'), 'rb') as f:
+        #     results = pickle.load(f)
+        results = pd.read_pickle(os.path.join(data_path, 'result.pkl'))
         self.predictions = results['prediction']
 
+    @lru_cache(maxsize=2)
     def get_diseases(self):
         '''
         :return: string[]

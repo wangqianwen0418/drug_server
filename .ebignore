@@ -1,8 +1,5 @@
-node_modules/
-src/
-tsconfig.json
-.gitignore
-public/
+
 collab_delivery/
 __pycache__/
-package-lock.json
+model.py 
+model_loader.py
