@@ -24,7 +24,7 @@ def get_diseases():
     '''
     :return: diseaseID[]
     '''
-    model_loader = g.model_loader
+    model_loader = current_app.config['MODEL_LOADER']
     return jsonify(model_loader.get_diseases())
 
 
@@ -36,11 +36,11 @@ def get_attention():
     '''
     disease_id = request.args.get('disease', None, type=str)
     drug_id = request.args.get('drug', None, type=str)
-    model_loader = g.model_loader
+    model_loader = current_app.config['MODEL_LOADER']
     attention = {}
-    attention['disease_{}'] = model_loader.get_node_attention(
+    attention['disease'] = model_loader.get_node_attention(
         'disease', disease_id)
-    attention['drug_{}'] = model_loader.get_node_attention(
+    attention['drug'] = model_loader.get_node_attention(
         'drug', drug_id)
 
     return jsonify(attention)
@@ -56,7 +56,7 @@ def get_drug_predictions():
     '''
     disease_id = request.args.get('disease_id', None, type=str)
     top_n = request.args.get('top_n', 10, type=int)
-    model_loader = g.model_loader
+    model_loader = current_app.config['MODEL_LOADER']
     predictions = model_loader.get_drug_disease_prediction(
         disease_id=disease_id, top_n=top_n)
     return jsonify(predictions)

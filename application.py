@@ -1,12 +1,11 @@
 from vis import vis
 from api import api
 from config import Config, ProductionConfig, DevelopmentConfig, SERVER_ROOT
+
 from flask_cors import CORS
 from flask import Flask, jsonify, g
+
 import argparse
-
-from model_loader_static import ModelLoader
-
 
 import os
 import sys
@@ -43,12 +42,6 @@ def create_app(config=None):
 
     app.register_blueprint(api, url_prefix='/api')
     app.register_blueprint(vis, url_prefix='/')
-
-    # initialize gnn model loader
-    @app.before_request
-    def before_request():
-        g.model_loader = ModelLoader(
-            os.path.join(SERVER_ROOT, 'collab_delivery/'))
 
     return app
 

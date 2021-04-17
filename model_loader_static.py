@@ -14,6 +14,8 @@ import urllib.request
 import os
 import scipy.io
 
+from functools import lru_cache
+
 # %%
 
 
@@ -85,6 +87,7 @@ class ModelLoader():
             score = preds_all[rel][drug_id][disease_id]
             return [{"score": score, "drug_id": drug_id, "disease_id": disease_id}]
 
+    @lru_cache(maxsize=32)
     def get_node_attention(self, node_type, node_id, thr=10):
         if self.attentions is None:
             attention_path = os.path.join(self.data_path, 'attention_all.csv')
