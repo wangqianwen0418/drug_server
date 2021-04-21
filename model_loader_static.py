@@ -44,7 +44,7 @@ class ModelLoader():
         results = pd.read_pickle(os.path.join(data_path, 'result.pkl'))
         self.predictions = results['prediction']
 
-    @lru_cache(maxsize=2)
+    @lru_cache(maxsize=10)
     def get_diseases(self):
         '''
         :return: string[]
@@ -106,19 +106,20 @@ class ModelLoader():
 
         def get_children(node_id, node_type, depth, attentions, thr):
 
-            rows = attentions[(attentions['x_id'] == node_id)
-                              & (attentions['x_type'] == node_type)
-                              ].sort_values('layer{}_att'.format(depth), ascending=False
+            rows = attentions[(attentions['y_id'] == node_id)
+                              & (attentions['y_type'] == node_type)
+                              ].sort_values('layer1_att', ascending=False
                                             ).head(thr)
             children = []
             for idx, row in rows.iterrows():
                 child = {}
-                if (row['y_id'] not in used_nodes):
-                    used_nodes.append(row['y_id'])
-                    child['nodeId'] = row['y_id']
-                    child['nodeType'] = row['y_type']
+                if (row['x_id'] not in used_nodes):
+                    # used_nodes.append(row['y_id']) #comment this out, only disable the duplication of root node
+                    child['nodeId'] = row['x_id']
+                    child['nodeType'] = row['x_type']
 
-                    child['score'] = row['layer{}_att'.format(depth)]
+                    child['score'] = row['layer1_att'] if depth == 2 \
+                        else row['layer1_att'] + row['layer2_att']
                     child['edgeInfo'] = row['relation']
 
                     if depth < 2:
