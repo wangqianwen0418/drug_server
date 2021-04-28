@@ -30,4 +30,5 @@ Werkzeug==1.0.1
 boto==2.49.0
 s3fs==0.6.0
 fsspec==2021.4.0
+neo4j==4.2.1
 
