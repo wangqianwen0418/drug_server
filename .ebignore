@@ -3,3 +3,4 @@ collab_delivery/
 __pycache__/
 model.py 
 model_loader.py
+*.pem
