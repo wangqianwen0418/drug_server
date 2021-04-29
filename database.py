@@ -12,7 +12,7 @@ from config import SERVER_ROOT
 
 class Neo4jApp:
 
-    def __init__(self, is_local):
+    def __init__(self, server, password, role='reader'):
         self.node_types = [
             "anatomy",
             "biological_process",
@@ -25,20 +25,30 @@ class Neo4jApp:
             "molecular_function",
             "pathway"
         ]
-        self.batch_size = 5000
+        self.batch_size = 10000
         # self.data_path = 'https://drug-gnn-models.s3.us-east-2.amazonaws.com/collaboration_delivery/'
         self.data_path = './collab_delivery/'
-
-        if not is_local:
-            host_name = "ec2-3-134-76-210.us-east-2.compute.amazonaws.com"
-            password = "i-0ecb29664ffd46993"
-        else:
-            host_name = "localhost"
-            password = 'password'
 
         scheme = "bolt"
         port = 7687
         user = "neo4j"
+
+        if server == 'local':
+            host_name = "localhost"
+            password = 'password'
+
+        elif server == 'community':
+            # community version, password is instance id
+            host_name = "ec2-3-134-76-210.us-east-2.compute.amazonaws.com"
+
+        else:
+            # enterprise version, password is instance id
+            host_name = 'ec2-18-219-188-110.us-east-2.compute.amazonaws.com'
+
+            # enterprise reader
+            if role == 'reader':
+                user = 'reader'
+                password = 'reader_password'
 
         # create driver
         uri = "{scheme}://{host_name}:{port}".format(
@@ -54,13 +64,13 @@ class Neo4jApp:
             self.driver.close()
 
     def clean_database(self):
-        with self.driver.session() as session:
+        with self.driver.session(database='neo4j') as session:
             session.run('MATCH (n) DETACH DELETE n')
             print('delete all nodes')
 
     def create_index(self):
 
-        with self.driver.session() as session:
+        with self.driver.session(database='neo4j') as session:
             for node_type in self.node_types:
                 session.run(
                     ' CREATE INDEX IF NOT EXISTS FOR (n: `{}` ) ON (n.id) '.format(node_type))
@@ -68,7 +78,9 @@ class Neo4jApp:
     def init_database(self):
         self.clean_database()
         self.create_index()
+        print('build attention graph...')
         self.build_attention()
+        print('build prediction graph...')
         self.add_prediction()
         print('database initialization finished')
 
@@ -95,7 +107,7 @@ class Neo4jApp:
             ).format(x_type=x_type,  y_type=y_type, relation=relation)
             return query
 
-        with self.driver.session() as session:
+        with self.driver.session(database='neo4j') as session:
             for idx, row in attentions.iterrows():
                 if idx % self.batch_size == 0:
                     if len(lines) > 0:
@@ -125,18 +137,18 @@ class Neo4jApp:
 
     def add_prediction(self):
         prediction = pd.read_pickle(os.path.join(
-            data_path, 'result.pkl'))['prediction']
+            self.data_path, 'result.pkl'))['prediction']
 
         query = (
             'UNWIND $lines as line '
             'MATCH (node1: disease { id: line.x_id }) '
             'MATCH (node2: drug { id: line.y_id }) '
-            'CREATE (node1)-[: Prediction { score: line.score, relation: rev_indication } ]->(node2) '
+            'CREATE (node1)-[: Prediction { score: line.score, relation: "rev_indication" } ]->(node2) '
             'RETURN node1, node2'
         )
         lines = []
 
-        with self.driver.session() as session:
+        with self.driver.session(database='neo4j') as session:
             for disease in prediction["rev_indication"]:
                 drugs = prediction["rev_indication"][disease]
                 top_drugs = sorted(
@@ -147,16 +159,40 @@ class Neo4jApp:
                     lines = []
                 else:
                     lines += [
-                        {'x_id': disease, 'y_id': item[0], 'score':item[1]} for item in top_drugs
+                        {'x_id': disease, 'y_id': item[0], 'score':float(item[1])} for item in top_drugs
                     ]
             session.run(query, lines=lines)
+
+    def query_disease(self):
+        query = (
+            'MATCH (node:disease)-[:Prediction]->(:drug)'
+            'RETURN node'
+        )
+        results = query.run(query)
+        return [{'name': record['node']['id']} for record in results]
+
+    def query_predicted_drugs(self, disease_id):
+        query = (
+            'MATCH (node1:disease { id: $id })-[edge:Prediction]->(node2:drug)'
+            'RETURN node2, edge ORDER BY edge.score DESC'
+        )
+        results = query.run(query, id=disease_id)
+        return [{'score': record['edge']['score'], 'drug_id': record['node']['id']} for record in results]
+
+    def query_attention(self, id, type):
+        query = (
+            'MATCH (node1: $type { id: $diseae_id })-[edge]->(node2)'
+            'RETURN node2, edge ORDER BY edge.score DESC'
+        )
+        results = query.run(query, id=disease_id)
+        return [{'score': record['edge']['score'], 'drug_id': record['node']['id']} for record in results]
 
 
 # %%
 if __name__ == "__main__":
-    is_local = False
 
-    app = Neo4jApp(is_local=is_local)
+    app = Neo4jApp(server='enterprise',
+                   password='i-006f5d72d2452a9fe', role='admin')
 
     app.init_database()
     app.close()
