@@ -25,6 +25,7 @@ class Neo4jApp:
             "molecular_function",
             "pathway"
         ]
+        self.batch_size = 5000
         # self.data_path = 'https://drug-gnn-models.s3.us-east-2.amazonaws.com/collaboration_delivery/'
         self.data_path = './collab_delivery/'
 
@@ -69,76 +70,86 @@ class Neo4jApp:
         self.create_index()
         self.build_attention()
         self.add_prediction()
+        print('database initialization finished')
 
     def build_attention(self):
 
         attention_path = os.path.join(self.data_path, 'attention_prune.csv')
         attentions = pd.read_csv(attention_path, dtype={
-                                 'x_id': 'string', 'y_id': 'string'})
+            'x_id': 'string', 'y_id': 'string'})
+
+        lines = []
+        x_type = ''
+        y_type = ''
+        relation = ''
+
+        def get_query(x_type, y_type, relation):
+            query = (
+                'UNWIND $lines as line '
+                'MERGE (node1: `{x_type}` {{ id: line.x_id }}) '
+                'ON CREATE SET node1.name = line.x_name '
+                'MERGE (node2: `{y_type}` {{ id: line.y_id }}) '
+                'ON CREATE SET node2.name = line.y_name  '
+                'MERGE (node1)-[e: `{relation}` ]->(node2) '
+                'ON CREATE SET e.layer1_att = line.layer1_att, e.layer2_att= line.layer2_att '
+            ).format(x_type=x_type,  y_type=y_type, relation=relation)
+            return query
 
         with self.driver.session() as session:
             for idx, row in attentions.iterrows():
-                if abs(row['layer1_att']) + abs(row['layer2_att']) < 0.1:
-                    continue
-                query = (
-                    'MERGE (node1: `{x_type}` {{ id: "{x_id}" }}) '
-                    'ON CREATE SET node1.name = "{x_name}", node1.type="{x_type}" '
-                    'MERGE (node2: `{y_type}` {{ id: "{y_id}" }}) '
-                    'ON CREATE SET node2.name = "{y_name}", node2.type="{y_type}"  '
-                    'MERGE (node1)-[: {relation} {{ relation: "{relation}", layer1_att: {layer1_att}, layer2_att: {layer2_att} }} ]->(node2) '
-                ).format(
-                    x_type=row['x_type'],
-                    y_type=row['y_type'],
-                    x_id=row['x_id'],
-                    y_id=row['y_id'],
-                    x_name=row['x_name'],
-                    y_name=row['y_name'],
-                    layer1_att=row['layer1_att'],
-                    layer2_att=row['layer2_att'],
-                    relation=row['relation']
-                )
-                session.run(query)
-                long_query = []
+                if idx % self.batch_size == 0:
+                    if len(lines) > 0:
+                        query = get_query(x_type, y_type, relation)
+                        session.run(query, lines=lines)
+                    x_type = row['x_type']
+                    y_type = row['y_type']
+                    relation = row['relation']
+                    lines = []
+                elif row['x_type'] == x_type and row['y_type'] == y_type and relation == relation:
 
-    def build_attention2(self):
-        attention_path = os.path.join(self.data_path, 'attention_all.csv')
-
-        with self.driver.session() as session:
-            query = (
-                'USING PERIODIC COMMIT 5000 '
-                'LOAD CSV WITH HEADERS FROM $attention_path AS row '
-                'MERGE (node1: Node { id: row.x_id, type: row.x_type }) '
-                'ON CREATE SET node1.name = row.x_name '
-                'MERGE (node2: Node { id: row.y_id, type: row.y_type }) '
-                'ON CREATE SET node2.name = row.y_name '
-                'CREATE (node1)-[: Relation { layer1_att: row.layer1_att, layer2_att: row.layer2_att, relation: row.relation } ]->(node2) '
-            )
-
-            result = session.run(
-                query, attention_path=attention_path)
+                    lines += [{
+                        'x_id': row['x_id'], 'y_id': row['y_id'],
+                        'x_name': row['x_name'], 'y_name': row['y_name'],
+                        'layer1_att': row['layer1_att'],
+                        'layer2_att': row['layer2_att']
+                    }]
+                else:
+                    query = get_query(x_type, y_type, relation)
+                    session.run(query, lines=lines)
+                    x_type = row['x_type']
+                    y_type = row['y_type']
+                    relation = row['relation']
+                    lines = []
+            query = get_query(x_type, y_type, relation)
+            session.run(query, lines=lines)
 
     def add_prediction(self):
         prediction = pd.read_pickle(os.path.join(
             data_path, 'result.pkl'))['prediction']
 
+        query = (
+            'UNWIND $lines as line '
+            'MATCH (node1: disease { id: line.x_id }) '
+            'MATCH (node2: drug { id: line.y_id }) '
+            'CREATE (node1)-[: Prediction { score: line.score, relation: rev_indication } ]->(node2) '
+            'RETURN node1, node2'
+        )
+        lines = []
+
         with self.driver.session() as session:
             for disease in prediction["rev_indication"]:
                 drugs = prediction["rev_indication"][disease]
-                for item in sorted(
+                top_drugs = sorted(
                     drugs.items(), key=lambda item: item[1], reverse=True
-                )[:20]:
-                    [drug_id, score] = item
-                    query = (
-                        'MATCH (node1: `disease` {{ id: "{x_id}" }}) '
-                        'MATCH (node2: `drug` {{ id: "{y_id}" }}) '
-                        'CREATE (node1)-[: Prediction {{ score: {score}, relation: rev_indication }} ]->(node2) '
-                        'RETURN node1, node2'
-                    ).format(
-                        x_id=disease,
-                        y_id=drug_id,
-                        score=score
-                    )
-                    result = session.run(query)
+                )[:20]
+                if len(lines) >= self.batch_size:
+                    session.run(query, lines=lines)
+                    lines = []
+                else:
+                    lines += [
+                        {'x_id': disease, 'y_id': item[0], 'score':item[1]} for item in top_drugs
+                    ]
+            session.run(query, lines=lines)
 
 
 # %%
