@@ -200,8 +200,55 @@ class Neo4jApp:
 
         with self.driver.session(database=self.database) as session:
             results = session.run(query)
-            res = [{'n1': record['neighbor']} for record in results]
-        return res
+            # session.run leads to lazy result fetch.
+            # Might change to session.read_transaction later
+            results = [
+                [
+                    {'node': record['neighbor'], 'rel': record['rel']},
+                    {'node': record['neighbor2'], 'rel': record['rel2']}
+                ]
+                for record in results
+            ]
+
+        def getId(n):
+            return n['nodeId']
+
+        def insertChild(children, items, depth):
+            if depth >= len(items):
+                return children
+            children_ids = list(map(getId, children))
+            node = items[depth]['node']
+            rel = items[depth]['rel']
+            try:
+                index = children_ids.index(node['id'])
+
+            except Exception:  # item does not exist
+                children.append({
+                    'nodeId': node['id'],
+                    'nodeType': list(node.labels)[0],
+                    'score': rel['layer1_att'] + rel['layer2_att'] if depth == 0 else rel['layer1_att'],
+                    'edgeInfo': rel.type,
+                    'children': []
+                })
+                index = 0
+            children[index]['children'] = insertChild(
+                children[index]['children'], items, depth + 1)
+
+            return children
+
+        children = []
+        for i in range(len(results)):
+            children = insertChild(children, results[i], 0)
+
+        tree = {
+            'nodeId': node_id,
+            'nodeType': node_type,
+            'score': 1,
+            'edgeInfo': '',
+            'children': children
+        }
+
+        return tree
 
 
 # %%
