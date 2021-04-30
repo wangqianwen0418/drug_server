@@ -205,12 +205,3 @@ class Neo4jApp:
 
 
 # %%
-if __name__ == "__main__":
-
-    app = Neo4jApp(server='enterprise',
-                   password='i-006f5d72d2452a9fe', user='admin')
-
-    app.init_database()
-    app.close()
-
-# %%
