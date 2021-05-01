@@ -7,7 +7,16 @@ import pandas as pd
 import os
 
 from config import SERVER_ROOT
+
+from flask import current_app, g
 # %%
+
+
+def get_db():
+    if 'db' not in g:
+        db = Neo4jApp(server='enterprise')
+        g.db = db
+    return g.db
 
 
 class Neo4jApp:
@@ -51,7 +60,7 @@ class Neo4jApp:
             scheme=scheme, host_name=host_name, port=port)
         try:
             self.driver = GraphDatabase.driver(
-                uri, auth=(user, password), encrypted=False)
+                uri, auth=(user, password), encrypted=False, max_connection_lifetime=400)
         except Exception as e:
             print("Failed to create the driver:", e)
 
@@ -82,7 +91,7 @@ class Neo4jApp:
 
     def build_attention(self):
 
-        attention_path = os.path.join(self.data_path, 'attention_prune.csv')
+        attention_path = os.path.join(self.data_path, 'attention_all.csv')
         attentions = pd.read_csv(attention_path, dtype={
             'x_id': 'string', 'y_id': 'string'})
 
@@ -149,7 +158,7 @@ class Neo4jApp:
                 drugs = prediction["rev_indication"][disease]
                 top_drugs = sorted(
                     drugs.items(), key=lambda item: item[1], reverse=True
-                )[:20]
+                )[:50]
                 if len(lines) >= self.batch_size:
                     session.run(query, lines=lines)
                     lines = []
@@ -159,7 +168,7 @@ class Neo4jApp:
                     ]
             session.run(query, lines=lines)
 
-    def query_disease(self):
+    def query_diseases(self):
         query = (
             'MATCH (node:disease)-[:Prediction]->(:drug)'
             'RETURN node'
@@ -167,6 +176,7 @@ class Neo4jApp:
         with self.driver.session(database=self.database) as session:
             results = session.run(query)
             res = [record['node']['id'] for record in results]
+            res = list(set(res))
         return res
 
     def query_predicted_drugs(self, disease_id):
@@ -181,22 +191,24 @@ class Neo4jApp:
         return res
 
     def query_attention(self, node_id, node_type):
+
         query = (
-            'MATCH  (p: {node_type} {{ id: "{node_id}" }})-[rel]->(neighbor) '
+            'MATCH  (p: {node_type} {{ id: "{node_id}" }})<-[rel]-(neighbor) '
+            'WHERE NOT (p)-[:Prediction]-(neighbor) '
             'WITH neighbor, rel '
-            'ORDER BY rel.layer1_att + rel.layer2_att '
-            'WITH collect({{ neighbor: neighbor, rel: rel }})[..{k1}] AS neighbors_and_rels '
+            'ORDER BY (rel.layer1_att ) DESC '
+            'WITH collect([ neighbor, rel])[..{k1}] AS neighbors_and_rels '
             'UNWIND neighbors_and_rels AS neighbor_and_rel '
-            'WITH neighbor_and_rel.neighbor AS neighbor, '
-            'neighbor_and_rel.rel AS rel '
-            'MATCH(neighbor)-[rel2]->(neighbor2) '
+            'WITH neighbor_and_rel[0] AS neighbor, '
+            'neighbor_and_rel[1] AS rel '
+            'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
             'WITH neighbor,rel, neighbor2, rel2 '
-            'ORDER BY rel2.layer1_att + rel2.layer2_att '
+            'ORDER BY rel2.layer1_att DESC '
             'WITH neighbor, rel, '
             'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
             'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '
             'RETURN neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
-        ).format(node_type=node_type, node_id=node_id, k1=5, k2=5)
+        ).format(node_type=node_type, node_id=node_id, k1=10, k2=5)
 
         with self.driver.session(database=self.database) as session:
             results = session.run(query)
@@ -213,11 +225,13 @@ class Neo4jApp:
         def getId(n):
             return n['nodeId']
 
-        def insertChild(children, items, depth):
+        def insertChild(children, items, depth, skip_nodes):
             if depth >= len(items):
                 return children
             children_ids = list(map(getId, children))
             node = items[depth]['node']
+            if node['id'] in skip_nodes:
+                return children
             rel = items[depth]['rel']
             try:
                 index = children_ids.index(node['id'])
@@ -226,19 +240,19 @@ class Neo4jApp:
                 children.append({
                     'nodeId': node['id'],
                     'nodeType': list(node.labels)[0],
-                    'score': rel['layer1_att'] + rel['layer2_att'] if depth == 0 else rel['layer1_att'],
+                    'score':  (rel['layer1_att'] + rel['layer2_att']) if depth == 0 else rel['layer1_att'],
                     'edgeInfo': rel.type,
                     'children': []
                 })
                 index = 0
             children[index]['children'] = insertChild(
-                children[index]['children'], items, depth + 1)
+                children[index]['children'], items, depth + 1, skip_nodes)
 
             return children
 
         children = []
         for i in range(len(results)):
-            children = insertChild(children, results[i], 0)
+            children = insertChild(children, results[i], 0, [node_id])
 
         tree = {
             'nodeId': node_id,
@@ -249,6 +263,3 @@ class Neo4jApp:
         }
 
         return tree
-
-
-# %%

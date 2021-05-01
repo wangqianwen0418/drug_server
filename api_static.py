@@ -5,8 +5,6 @@ import flask
 from flask import request, jsonify, Blueprint, current_app, g
 from utils import better_json_encoder
 
-from database import get_db
-
 api = Blueprint('api', __name__)
 
 api.json_encoder = better_json_encoder(flask.json.JSONEncoder)
@@ -26,8 +24,8 @@ def get_diseases():
     '''
     :return: diseaseID[]
     '''
-    db = get_db()
-    return jsonify(db.query_diseases())
+    model_loader = current_app.config['MODEL_LOADER']
+    return jsonify(model_loader.get_diseases())
 
 
 @api.route('/attention', methods=['GET'])
@@ -38,11 +36,12 @@ def get_attention():
     '''
     disease_id = request.args.get('disease', None, type=str)
     drug_id = request.args.get('drug', None, type=str)
-
-    db = get_db()
+    model_loader = current_app.config['MODEL_LOADER']
     attention = {}
-    attention['disease'] = db.query_attention(disease_id, 'disease')
-    attention['drug'] = db.query_attention(drug_id, 'drug')
+    attention['disease'] = model_loader.get_node_attention(
+        'disease', disease_id)
+    attention['drug'] = model_loader.get_node_attention(
+        'drug', drug_id)
 
     return jsonify(attention)
 
@@ -57,7 +56,7 @@ def get_drug_predictions():
     '''
     disease_id = request.args.get('disease_id', None, type=str)
     top_n = request.args.get('top_n', 10, type=int)
-    db = get_db()
-    predictions = db.query_predicted_drugs(
-        disease_id=disease_id)
+    model_loader = current_app.config['MODEL_LOADER']
+    predictions = model_loader.get_drug_disease_prediction(
+        disease_id=disease_id, top_n=top_n)
     return jsonify(predictions)

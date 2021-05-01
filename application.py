@@ -32,6 +32,11 @@ def create_app(config=None):
     # print(config)
     app.config.update(config)
 
+    @app.teardown_appcontext
+    def close_db(error):
+        if hasattr(g, 'neo4j_db'):
+            g.neo4j_db.close()
+
     @app.route('/config')
     def config():
         return jsonify([str(k) for k in list(app.config.items())])
