@@ -33,6 +33,8 @@ def send_index(model):
         return send_from_directory(current_app.config['FRONT_ROOT'], 'index.html')
     if model == 'manifest.json':
         return send_from_directory(current_app.config['FRONT_ROOT'], 'manifest.json')
+    else:
+        return send_from_directory(current_app.config['FRONT_ROOT'], model)
 
 
 @vis.route('/data/<path:path>', methods=['GET', 'OPTIONS'])
