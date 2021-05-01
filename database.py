@@ -37,7 +37,7 @@ class Neo4jApp:
         self.batch_size = 10000
         # self.data_path = 'https://drug-gnn-models.s3.us-east-2.amazonaws.com/collaboration_delivery/'
         self.data_path = './collab_delivery/'
-        self.database = 'neo4j'
+        self.database = 'drug'
 
         scheme = "bolt"
         port = 7687
