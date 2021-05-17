@@ -20,6 +20,8 @@ def get_db():
 
 
 class Neo4jApp:
+    k1 = 10  # upper limit of children for root node
+    k2 = 5  # upper limit of children for hop-1 nodes
 
     def __init__(self, server, password='reader_password', user='reader'):
         self.node_types = [
@@ -190,45 +192,20 @@ class Neo4jApp:
                     'drug_id': record['node']['id']} for record in results]
         return res
 
-    def query_attention(self, node_id, node_type):
-
-        query = (
-            'MATCH  (p: {node_type} {{ id: "{node_id}" }})<-[rel]-(neighbor) '
-            'WHERE NOT (p)-[:Prediction]-(neighbor) '
-            'WITH neighbor, rel '
-            'ORDER BY (rel.layer1_att ) DESC '
-            'WITH collect([ neighbor, rel])[..{k1}] AS neighbors_and_rels '
-            'UNWIND neighbors_and_rels AS neighbor_and_rel '
-            'WITH neighbor_and_rel[0] AS neighbor, '
-            'neighbor_and_rel[1] AS rel '
-            'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
-            'WITH neighbor,rel, neighbor2, rel2 '
-            'ORDER BY rel2.layer1_att DESC '
-            'WITH neighbor, rel, '
-            'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
-            'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '
-            'RETURN neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
-        ).format(node_type=node_type, node_id=node_id, k1=10, k2=5)
-
-        with self.driver.session(database=self.database) as session:
-            results = session.run(query)
-            # session.run leads to lazy result fetch.
-            # Might change to session.read_transaction later
-            results = [
-                [
-                    {'node': record['neighbor'], 'rel': record['rel']},
-                    {'node': record['neighbor2'], 'rel': record['rel2']}
-                ]
-                for record in results
-            ]
-
-        def getId(n):
-            return n['nodeId']
-
+    @staticmethod
+    def get_tree(results, node_type, node_id):
+        """
+        Params:
+            reuslts: return from query, Array<[{node, rel}, [node, rel]]>
+            node_type: type of root node
+            node_id: id of root node
+        Return:
+            tree
+        """
         def insertChild(children, items, depth, skip_nodes):
             if depth >= len(items):
                 return children
-            children_ids = list(map(getId, children))
+            children_ids = list(map(lambda n: n['nodeId'], children))
             node = items[depth]['node']
             if node['id'] in skip_nodes:
                 return children
@@ -263,3 +240,61 @@ class Neo4jApp:
         }
 
         return tree
+
+    def query_attention(self, node_id, node_type):
+
+        query = (
+            'MATCH  (p: {node_type} {{ id: "{node_id}" }})<-[rel]-(neighbor) '
+            'WHERE NOT (p)-[:Prediction]-(neighbor) '
+            'WITH neighbor, rel '
+            'ORDER BY (rel.layer1_att ) DESC '
+            'WITH collect([ neighbor, rel])[..{k1}] AS neighbors_and_rels '
+            'UNWIND neighbors_and_rels AS neighbor_and_rel '
+            'WITH neighbor_and_rel[0] AS neighbor, '
+            'neighbor_and_rel[1] AS rel '
+            'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
+            'WITH neighbor,rel, neighbor2, rel2 '
+            'ORDER BY rel2.layer1_att DESC '
+            'WITH neighbor, rel, '
+            'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
+            'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '
+            'RETURN neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
+        ).format(node_type=node_type, node_id=node_id, k1=Neo4jApp.k1, k2=Neo4jApp.k2)
+
+        with self.driver.session(database=self.database) as session:
+            results = session.run(query)
+            # session.run leads to lazy result fetch.
+            # Might change to session.read_transaction later
+            results = [
+                [
+                    {'node': record['neighbor'], 'rel': record['rel']},
+                    {'node': record['neighbor2'], 'rel': record['rel2']}
+                ]
+                for record in results
+            ]
+
+        tree = self.get_tree(results, node_type, node_id)
+
+        return tree
+
+    def query_metapath_summary(self, root_nodes):
+
+        query = (
+            'UNWIND $nodes as node '
+            'MATCH  (p: node.type {{ id: node.id }})<-[rel]-(neighbor) '
+            'WHERE NOT (p)-[:Prediction]-(neighbor) '
+            'WITH neighbor, rel '
+            'ORDER BY (rel.layer1_att ) DESC '
+            'WITH collect([ neighbor, rel])[..{k1}] AS neighbors_and_rels '
+            'UNWIND neighbors_and_rels AS neighbor_and_rel '
+            'WITH neighbor_and_rel[0] AS neighbor, '
+            'neighbor_and_rel[1] AS rel '
+            'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
+            'WITH neighbor,rel, neighbor2, rel2 '
+            'ORDER BY rel2.layer1_att DESC '
+            'WITH neighbor, rel, '
+            'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
+            'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '
+            'RETURN neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
+        ).format(k1=Neo4jApp.k1, k2=Neo4jApp.k2)
+# %%
