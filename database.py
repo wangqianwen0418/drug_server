@@ -25,7 +25,7 @@ def get_db():
 class Neo4jApp:
     k1 = 10  # upper limit of children for root node
     k2 = 5  # upper limit of children for hop-1 nodes
-    top_n = 50  # predicted top n drugs
+    top_n = 20  # predicted top n drugs
 
     def __init__(self, server, password='reader_password', user='reader'):
         self.node_types = [
@@ -70,6 +70,9 @@ class Neo4jApp:
                 uri, auth=(user, password), encrypted=False, max_connection_lifetime=400)
         except Exception as e:
             print("Failed to create the driver:", e)
+
+        self.current_disease = None
+        self.drugs = None
 
     def create_session(self):
         self.session = self.driver.session(database=self.database)
@@ -229,7 +232,7 @@ class Neo4jApp:
             )
             results = tx.run(query, id=disease_id)
             drugs = [{'score': record['edge']['score'],
-                      'drug_id': record['node']['id']} for record in results]
+                      'id': record['node']['id']} for record in results]
             return drugs
 
         drugs = self.session.read_transaction(
@@ -272,7 +275,7 @@ class Neo4jApp:
                     edgeInfo = rel.type
                 children.append({
                     'nodeId': node['id'],
-                    'nodeType': list(node.labels)[0],
+                    'nodeType': Neo4jApp.get_node_labels(node)[0],
                     'score':  score,
                     'edgeInfo': edgeInfo,
                     'children': []
@@ -299,25 +302,28 @@ class Neo4jApp:
             'WHERE NOT (node)-[:Prediction]-(neighbor) '
             'WITH node, neighbor, rel '
             'ORDER BY (rel.layer1_att ) DESC '
-            'WITH collect([ node, neighbor, rel])[..{k1}] AS neighbors_and_rels '
+            'WITH node, '
+            'collect([ neighbor, rel])[0..{k1}] AS neighbors_and_rels '
             'UNWIND neighbors_and_rels AS neighbor_and_rel '
-            'WITH neighbor_and_rel[0] AS node, '
-            'neighbor_and_rel[1] AS neighbor, '
-            'neighbor_and_rel[2] AS rel '
+            'WITH node, '
+            'neighbor_and_rel[0] AS neighbor, '
+            'neighbor_and_rel[1] AS rel '
             'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
-            'WITH node, neighbor,rel, neighbor2, rel2 '
+            'WITH node, neighbor, rel, neighbor2, rel2 '
             'ORDER BY rel2.layer1_att DESC '
             'WITH node, neighbor, rel, '
             'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
             'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '
             'RETURN node, neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
         ).format(node_type=node_type, k1=Neo4jApp.k1, k2=Neo4jApp.k2)
+
         results = tx.run(query, nodes=root_nodes)
         results = [
             [
                 {'node': record['node'], 'rel': 'none'},  # root node
                 {'node': record['neighbor'], 'rel': record['rel']},  # hop1
-                {'node': record['neighbor2'], 'rel': record['rel2']}  # hop2
+                {'node': record['neighbor2'],
+                 'rel': record['rel2']}  # hop2
             ]
             for record in results
         ]
@@ -334,19 +340,66 @@ class Neo4jApp:
 
         return tree
 
+    @staticmethod
+    def get_node_labels(node):
+        return list(node.labels)
+
     def query_metapath_summary(self):
 
         if not self.session:
             self.create_session()
 
+        assert self.current_disease is not None, 'should assign a disease id first'
+
+        if not self.drugs:
+            self.query_predicted_drugs(self.current_disease)
+
         drug_paths = self.session.read_transaction(
             Neo4jApp.commit_batch_attention_query, 'drug', self.drugs)
-        disease_paths = self.session.read_transaction(Neo4jApp.commit_attention_query, {
-                                                      'id': self.current_disease}, 'disease')
-        metapaths = []
+        disease_paths = self.session.read_transaction(
+            Neo4jApp.commit_batch_attention_query,
+            'disease',
+            [{'id': self.current_disease}]
+        )
 
-        # for drug_path in drug_paths:
-        #     for item in drug_path:
+        metapaths = []
+        metapath_keys = {}
+        print('length drugs', len(drug_paths))
+        # print([[Neo4jApp.get_node_labels(item['node'])[0] + ':' + item['node']['name']
+        #         for item in drug_path] for drug_path in drug_paths])
+
+        for disease_path in disease_paths:
+
+            for drug_path in drug_paths:
+
+                for idx_a, item_a in enumerate(disease_path):
+                    for idx_b, item_b in enumerate(drug_path):
+                        node_a = item_a['node']
+                        node_b = item_b['node']
+                        type_a = Neo4jApp.get_node_labels(node_a)[0]
+                        type_b = Neo4jApp.get_node_labels(node_b)[0]
+                        if type_a == type_b and node_a['id'] == node_b['id']:
+                            # find a path, update metapath
+                            items = disease_path[:idx_a+1] + \
+                                drug_path[:idx_b][::-1]
+
+                            metapath = list(
+                                map(lambda item: Neo4jApp.get_node_labels(item['node'])[0], items))
+                            metapath_key = '-'.join(metapath)
+
+                            if metapath_key in metapath_keys:
+                                metapaths[metapath_keys[metapath_key]
+                                          ]['count'] += 1
+                            else:
+                                metapath_keys[metapath_key] = len(metapaths)
+                                metapaths.append(
+                                    {
+                                        'node_types': metapath,
+                                        'count': 1
+                                    }
+                                )
+
+        return metapaths
 
 
 # %%

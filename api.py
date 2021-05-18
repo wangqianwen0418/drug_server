@@ -53,7 +53,7 @@ def get_drug_predictions():
     get drug predictions
     E.g.: [base_url]/api/drug_predictions?disease_id=17494&top_n=10
 
-    :return: {score:number, drug_id: int, disease_id: int }[]
+    :return: {score:number, id: string }[]
     '''
     disease_id = request.args.get('disease_id', None, type=str)
     top_n = request.args.get('top_n', 10, type=int)
