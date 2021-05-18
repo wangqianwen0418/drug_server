@@ -35,7 +35,7 @@ def create_app(config=None):
     @app.teardown_appcontext
     def close_db(error):
         if hasattr(g, 'neo4j_db'):
-            g.neo4j_db.close()
+            g.neo4j_db.close_session()
 
     @app.route('/config')
     def config():
