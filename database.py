@@ -25,6 +25,7 @@ def get_db():
 class Neo4jApp:
     k1 = 10  # upper limit of children for root node
     k2 = 5  # upper limit of children for hop-1 nodes
+    top_n = 50  # predicted top n drugs
 
     def __init__(self, server, password='reader_password', user='reader'):
         self.node_types = [
@@ -191,7 +192,7 @@ class Neo4jApp:
             drugs = prediction["rev_indication"][disease]
             top_drugs = sorted(
                 drugs.items(), key=lambda item: item[1], reverse=True
-            )[:50]
+            )[:Neo4jApp.top_n]
             if len(lines) >= self.batch_size:
                 self.session.write_transaction(
                     commit_batch_prediction, lines=lines)
@@ -227,14 +228,16 @@ class Neo4jApp:
                 'RETURN node, edge ORDER BY edge.score DESC'
             )
             results = tx.run(query, id=disease_id)
-            drug_ids = [{'score': record['edge']['score'],
-                         'drug_id': record['node']['id']} for record in results]
-            return drug_ids
+            drugs = [{'score': record['edge']['score'],
+                      'drug_id': record['node']['id']} for record in results]
+            return drugs
 
-        drug_ids = self.session.read_transaction(
+        drugs = self.session.read_transaction(
             commit_drugs_query, disease_id)
+        self.current_disease = disease_id
+        self.drugs = drugs
 
-        return drug_ids
+        return drugs
 
     @staticmethod
     def get_tree(results, node_type, node_id):
@@ -251,18 +254,27 @@ class Neo4jApp:
                 return children
             children_ids = list(map(lambda n: n['nodeId'], children))
             node = items[depth]['node']
-            if node['id'] in skip_nodes:
+            if node['id'] in skip_nodes and depth > 0:
                 return children
             rel = items[depth]['rel']
             try:
                 index = children_ids.index(node['id'])
 
-            except Exception:  # item does not exist
+            except Exception:  # item does not exist, insert a child
+                if depth == 0:
+                    score = 1
+                    edgeInfo = ''
+                elif depth == 1:
+                    score = (rel['layer1_att'] + rel['layer2_att'])
+                    edgeInfo = rel.type
+                else:
+                    score = (rel['layer1_att'])
+                    edgeInfo = rel.type
                 children.append({
                     'nodeId': node['id'],
                     'nodeType': list(node.labels)[0],
-                    'score':  (rel['layer1_att'] + rel['layer2_att']) if depth == 0 else rel['layer1_att'],
-                    'edgeInfo': rel.type,
+                    'score':  score,
+                    'edgeInfo': edgeInfo,
                     'children': []
                 })
                 index = 0
@@ -275,46 +287,40 @@ class Neo4jApp:
         for i in range(len(results)):
             children = insertChild(children, results[i], 0, [node_id])
 
-        tree = {
-            'nodeId': node_id,
-            'nodeType': node_type,
-            'score': 1,
-            'edgeInfo': '',
-            'children': children
-        }
-
+        tree = children[0]
         return tree
 
     @staticmethod
-    def commit_attention_query(tx, node_type, node_id):
+    def commit_batch_attention_query(tx, node_type, root_nodes):
+
         query = (
-            'MATCH  (p: {node_type} {{ id: "{node_id}" }})<-[rel]-(neighbor) '
-            'WHERE NOT (p)-[:Prediction]-(neighbor) '
-            'WITH neighbor, rel '
+            'UNWIND $nodes as root_node '
+            'MATCH  (node: {node_type} {{ id: root_node.id }})<-[rel]-(neighbor) '
+            'WHERE NOT (node)-[:Prediction]-(neighbor) '
+            'WITH node, neighbor, rel '
             'ORDER BY (rel.layer1_att ) DESC '
-            'WITH collect([ neighbor, rel])[..{k1}] AS neighbors_and_rels '
+            'WITH collect([ node, neighbor, rel])[..{k1}] AS neighbors_and_rels '
             'UNWIND neighbors_and_rels AS neighbor_and_rel '
-            'WITH neighbor_and_rel[0] AS neighbor, '
-            'neighbor_and_rel[1] AS rel '
+            'WITH neighbor_and_rel[0] AS node, '
+            'neighbor_and_rel[1] AS neighbor, '
+            'neighbor_and_rel[2] AS rel '
             'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
-            'WITH neighbor,rel, neighbor2, rel2 '
+            'WITH node, neighbor,rel, neighbor2, rel2 '
             'ORDER BY rel2.layer1_att DESC '
-            'WITH neighbor, rel, '
+            'WITH node, neighbor, rel, '
             'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
             'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '
-            'RETURN neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
-        ).format(node_type=node_type, node_id=node_id, k1=Neo4jApp.k1, k2=Neo4jApp.k2)
-
-        results = tx.run(query)
-
+            'RETURN node, neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
+        ).format(node_type=node_type, k1=Neo4jApp.k1, k2=Neo4jApp.k2)
+        results = tx.run(query, nodes=root_nodes)
         results = [
             [
-                {'node': record['neighbor'], 'rel': record['rel']},
-                {'node': record['neighbor2'], 'rel': record['rel2']}
+                {'node': record['node'], 'rel': 'none'},  # root node
+                {'node': record['neighbor'], 'rel': record['rel']},  # hop1
+                {'node': record['neighbor2'], 'rel': record['rel2']}  # hop2
             ]
             for record in results
         ]
-
         return results
 
     def query_attention(self, node_id, node_type):
@@ -322,32 +328,25 @@ class Neo4jApp:
             self.create_session()
 
         results = self.session.read_transaction(
-            Neo4jApp.commit_attention_query, node_type, node_id)
+            Neo4jApp.commit_batch_attention_query, node_type, [{'id': node_id}])
 
         tree = self.get_tree(results, node_type, node_id)
 
         return tree
 
-    def query_metapath_summary(self, root_nodes):
+    def query_metapath_summary(self):
 
-        query = (
-            'UNWIND $nodes as node '
-            'MATCH  (p: node.type {{ id: node.id }})<-[rel]-(neighbor) '
-            'WHERE NOT (p)-[:Prediction]-(neighbor) '
-            'WITH neighbor, rel '
-            'ORDER BY (rel.layer1_att ) DESC '
-            'WITH collect([ neighbor, rel])[..{k1}] AS neighbors_and_rels '
-            'UNWIND neighbors_and_rels AS neighbor_and_rel '
-            'WITH neighbor_and_rel[0] AS neighbor, '
-            'neighbor_and_rel[1] AS rel '
-            'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
-            'WITH neighbor,rel, neighbor2, rel2 '
-            'ORDER BY rel2.layer1_att DESC '
-            'WITH neighbor, rel, '
-            'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
-            'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '
-            'RETURN neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
-        ).format(k1=Neo4jApp.k1, k2=Neo4jApp.k2)
+        if not self.session:
+            self.create_session()
+
+        drug_paths = self.session.read_transaction(
+            Neo4jApp.commit_batch_attention_query, 'drug', self.drugs)
+        disease_paths = self.session.read_transaction(Neo4jApp.commit_attention_query, {
+                                                      'id': self.current_disease}, 'disease')
+        metapaths = []
+
+        # for drug_path in drug_paths:
+        #     for item in drug_path:
 
 
 # %%
