@@ -33,7 +33,7 @@ def get_diseases():
 @api.route('/attention', methods=['GET'])
 def get_attention():
     '''
-    :return: diseaseID[]
+    :return: {'key': attentionTree}
     E.g.: [base_url]/api/attention?disease=0&drug=0
     '''
     disease_id = request.args.get('disease', None, type=str)
@@ -51,13 +51,19 @@ def get_attention():
 def get_drug_predictions():
     '''
     get drug predictions
-    E.g.: [base_url]/api/drug_predictions?disease_id=17494&top_n=10
+    E.g.: [base_url]/api/drug_predictions?disease_id=1687.0&top_n=30
 
-    :return: {score:number, id: string }[]
+    :return: {
+        predictions:{score:number, id: string }[],
+        metapath_summary: {node_types: string[], count: number}[]
+        }
     '''
     disease_id = request.args.get('disease_id', None, type=str)
     top_n = request.args.get('top_n', 10, type=int)
     db = get_db()
     predictions = db.query_predicted_drugs(
-        disease_id=disease_id)
-    return jsonify(predictions)
+        disease_id=disease_id, top_n=top_n)
+
+    summary = db.query_metapath_summary()
+
+    return jsonify({'predictions': predictions, 'metapath_summary': summary})

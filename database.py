@@ -223,14 +223,14 @@ class Neo4jApp:
 
         return self.session.read_transaction(commit_diseases_query)
 
-    def query_predicted_drugs(self, disease_id):
+    def query_predicted_drugs(self, disease_id, top_n):
 
         def commit_drugs_query(tx, disease_id):
             query = (
                 'MATCH (:disease { id: $id })-[edge:Prediction]->(node:drug)'
-                'RETURN node, edge ORDER BY edge.score DESC'
+                'RETURN node, edge ORDER BY edge.score DESC LIMIT $top_n'
             )
-            results = tx.run(query, id=disease_id)
+            results = tx.run(query, id=disease_id, top_n=top_n)
             drugs = [{'score': record['edge']['score'],
                       'id': record['node']['id']} for record in results]
             return drugs
@@ -391,11 +391,12 @@ class Neo4jApp:
                                 metapath_keys[metapath_key] = len(metapaths)
                                 metapaths.append(
                                     {
-                                        'node_types': metapath,
+                                        'nodeTypes': metapath,
                                         'count': 1
                                     }
                                 )
 
+        metapaths.sort(key=lambda x: x['count'], reverse=True)
         return metapaths
 
 
