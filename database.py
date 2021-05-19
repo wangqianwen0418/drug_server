@@ -364,9 +364,6 @@ class Neo4jApp:
 
         metapaths = []
         metapath_keys = {}
-        print('length drugs', len(drug_paths))
-        # print([[Neo4jApp.get_node_labels(item['node'])[0] + ':' + item['node']['name']
-        #         for item in drug_path] for drug_path in drug_paths])
 
         for disease_path in disease_paths:
 
