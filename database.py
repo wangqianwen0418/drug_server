@@ -363,6 +363,7 @@ class Neo4jApp:
         )
 
         metapaths = []
+        existing_paths = []
         metapath_keys = {}
 
         for disease_path in disease_paths:
@@ -382,27 +383,35 @@ class Neo4jApp:
                             # find a path, update metapath
                             items = disease_path[:idx_a+1] + \
                                 drug_path[:idx_b][::-1]
+                            path = '-'.join([item['node']['id']
+                                             for item in items])
 
                             metapath = list(
                                 map(lambda item: Neo4jApp.get_node_labels(item['node'])[0], items))
                             metapath_key = '-'.join(metapath)
 
-                            if metapath_key in metapath_keys:
-                                metapaths[metapath_keys[metapath_key]
-                                          ]['count'][drug_idx] += 1
-                                metapaths[metapath_keys[metapath_key]
-                                          ]['sum'] += 1
+                            if path in existing_paths:
+                                continue
                             else:
-                                metapath_keys[metapath_key] = len(metapaths)
-                                count = [0 for i in self.drugs]
-                                count[drug_idx] += 1
-                                metapaths.append(
-                                    {
-                                        'nodeTypes': metapath,
-                                        'count': count,
-                                        'sum': 1
-                                    }
-                                )
+                                existing_paths.append(path)
+
+                                if metapath_key in metapath_keys:
+                                    metapaths[metapath_keys[metapath_key]
+                                              ]['count'][drug_idx] += 1
+                                    metapaths[metapath_keys[metapath_key]
+                                              ]['sum'] += 1
+                                else:
+                                    metapath_keys[metapath_key] = len(
+                                        metapaths)
+                                    count = [0 for i in self.drugs]
+                                    count[drug_idx] += 1
+                                    metapaths.append(
+                                        {
+                                            'nodeTypes': metapath,
+                                            'count': count,
+                                            'sum': 1
+                                        }
+                                    )
 
         metapaths.sort(key=lambda x: x['sum'], reverse=True)
         return metapaths
