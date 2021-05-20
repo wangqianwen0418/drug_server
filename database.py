@@ -25,7 +25,7 @@ def get_db():
 class Neo4jApp:
     k1 = 10  # upper limit of children for root node
     k2 = 5  # upper limit of children for hop-1 nodes
-    top_n = 20  # predicted top n drugs
+    top_n = 50  # write the predicted top n drugs to the graph database
 
     def __init__(self, server, password='reader_password', user='reader'):
         self.node_types = [
@@ -368,6 +368,9 @@ class Neo4jApp:
         for disease_path in disease_paths:
 
             for drug_path in drug_paths:
+                current_drug = drug_path[0]['node']['id']
+                drug_idx = [drug['id']
+                            for drug in self.drugs].index(current_drug)
 
                 for idx_a, item_a in enumerate(disease_path):
                     for idx_b, item_b in enumerate(drug_path):
@@ -386,17 +389,22 @@ class Neo4jApp:
 
                             if metapath_key in metapath_keys:
                                 metapaths[metapath_keys[metapath_key]
-                                          ]['count'] += 1
+                                          ]['count'][drug_idx] += 1
+                                metapaths[metapath_keys[metapath_key]
+                                          ]['sum'] += 1
                             else:
                                 metapath_keys[metapath_key] = len(metapaths)
+                                count = [0 for i in self.drugs]
+                                count[drug_idx] += 1
                                 metapaths.append(
                                     {
                                         'nodeTypes': metapath,
-                                        'count': 1
+                                        'count': count,
+                                        'sum': 1
                                     }
                                 )
 
-        metapaths.sort(key=lambda x: x['count'], reverse=True)
+        metapaths.sort(key=lambda x: x['sum'], reverse=True)
         return metapaths
 
 
