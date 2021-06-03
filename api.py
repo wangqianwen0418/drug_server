@@ -47,6 +47,21 @@ def get_attention():
     return jsonify(attention)
 
 
+@api.route('/attention_pair', methods=['GET'])
+def get_attention_pair():
+    '''
+    :return: {'attention': {key: attentionTree}, 'metapaths': metapath[]}
+    E.g.: [base_url]/api/attention_pair?disease=0&drug=0
+    '''
+    disease_id = request.args.get('disease', None, type=str)
+    drug_id = request.args.get('drug', None, type=str)
+
+    db = get_db()
+    res = db.query_attention_pair(disease_id, drug_id)
+
+    return jsonify(res)
+
+
 @api.route('/drug_predictions', methods=['GET'])
 def get_drug_predictions():
     '''

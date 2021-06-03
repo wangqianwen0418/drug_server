@@ -340,6 +340,64 @@ class Neo4jApp:
 
         return tree
 
+    def query_attention_pair(self, disease_id, drug_id):
+        if not self.session:
+            self.create_session()
+
+        drug_paths = self.session.read_transaction(
+            Neo4jApp.commit_batch_attention_query, "drug", [{'id': drug_id}])
+        disease_paths = self.session.read_transaction(
+            Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}])
+
+        def convert(e, i):
+            return {'edgeInfo': e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
+
+        metapaths = []
+        existing_path = []
+
+        for disease_path in disease_paths:
+            for drug_path in drug_paths:
+                for idx_a, item_a in enumerate(disease_path):
+                    for idx_b, item_b in enumerate(drug_path):
+                        node_a = item_a['node']
+                        node_b = item_b['node']
+                        type_a = Neo4jApp.get_node_labels(node_a)[0]
+                        type_b = Neo4jApp.get_node_labels(node_b)[0]
+                        if type_a == type_b and node_a['id'] == node_b['id']:
+                            # find a path, update metapath
+                            nodes = [
+                                {
+                                    'nodeId': item['node']['id'],
+                                    'nodeType': Neo4jApp.get_node_labels(item['node'])[0]
+                                } for item in disease_path[:idx_a+1] +
+                                drug_path[:idx_b][::-1]]
+
+                            metapath_string = '-'.join([node['nodeId']
+                                                        for node in nodes])
+                            if metapath_string in existing_path:
+                                pass
+                            else:
+                                existing_path.append(metapath_string)
+                                # the edge calculation is tricky here
+                                edges = [convert(item['rel'], i) for i, item in enumerate(disease_path[1:idx_a+1])] + (
+                                    [convert(item['rel'], i) for i, item in enumerate(
+                                        drug_path[1:idx_b+1])
+                                     ][::-1]
+                                )
+
+                                metapath = {
+                                    'nodes': nodes,
+                                    'edges': edges
+                                }
+                                metapaths.append(metapath)
+
+        attention = {}
+        attention['disease'] = self.get_tree(
+            disease_paths, 'diseaase', disease_id)
+        attention['drug'] = self.get_tree(drug_paths, 'drug', drug_id)
+
+        return {'attention': attention, "metapaths": metapaths}
+
     @staticmethod
     def get_node_labels(node):
         return list(node.labels)
