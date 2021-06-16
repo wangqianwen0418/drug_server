@@ -16,7 +16,7 @@ from flask import current_app, g
 
 def get_db():
     if 'db' not in g:
-        db = Neo4jApp(server='enterprise')
+        db = Neo4jApp(server='enterprise', database='icml')
         db.create_session()
         g.db = db
     return g.db
@@ -27,7 +27,7 @@ class Neo4jApp:
     k2 = 5  # upper limit of children for hop-1 nodes
     top_n = 50  # write the predicted top n drugs to the graph database
 
-    def __init__(self, server, password='reader_password', user='reader'):
+    def __init__(self, server, password='reader_password', user='reader', datapath='./collab_delivery/', database='drug'):
         self.node_types = [
             "anatomy",
             "biological_process",
@@ -40,13 +40,13 @@ class Neo4jApp:
             "molecular_function",
             "pathway"
         ]
-        self.batch_size = 10000
+        self.batch_size = 5000
         # self.data_path = 'https://drug-gnn-models.s3.us-east-2.amazonaws.com/collaboration_delivery/'
-        self.data_path = './collab_delivery/'
-        self.database = 'drug'
 
         scheme = "bolt"
         port = 7687
+        self.data_path = datapath
+        self.database = database
 
         if server == 'local':
             host_name = "localhost"
@@ -54,13 +54,10 @@ class Neo4jApp:
             user = 'neo4j'
             self.database = 'neo4j'
 
-        elif server == 'community':
-            # community version, password is instance id
-            host_name = "ec2-3-134-76-210.us-east-2.compute.amazonaws.com"
-
         else:
             # enterprise version, password is instance id
-            host_name = 'ec2-18-219-188-110.us-east-2.compute.amazonaws.com'
+            host_name = 'ec2-18-224-215-224.us-east-2.compute.amazonaws.com'  # attention
+            # host_name = 'ec2-18-219-216-202.us-east-2.compute.amazonaws.com' # graph mask
 
         # create driver
         uri = "{scheme}://{host_name}:{port}".format(
@@ -88,9 +85,11 @@ class Neo4jApp:
         if not self.session:
             self.create_session()
 
-        def delete_all(tx):
-            tx.run('MATCH (n) DETACH DELETE n')
-        self.session.write_transaction(delete_all)
+        def delete_all(tx, node):
+            tx.run('MATCH (n: `{}`) DETACH DELETE n'.format(node))
+
+        for node_type in self.node_types:
+            self.session.write_transaction(delete_all, node_type)
         print('delete all nodes')
 
     def create_index(self):
@@ -115,12 +114,13 @@ class Neo4jApp:
         self.add_prediction()
         print('database initialization finished')
 
-    def build_attention(self):
+    def build_attention(self, filename='attention_all.csv'):
 
         if not self.session:
             self.create_session()
 
-        attention_path = os.path.join(self.data_path, 'attention_all.csv')
+        attention_path = os.path.join(self.data_path, filename)
+        print('read attention file')
         attentions = pd.read_csv(attention_path, dtype={
             'x_id': 'string', 'y_id': 'string'})
 
@@ -141,13 +141,28 @@ class Neo4jApp:
             ).format(x_type=x_type,  y_type=y_type, relation=relation)
             tx.run(query, lines=lines)
 
+        def delete_empty_edge(tx):
+            query = (
+                'MATCH (node1)-[e { layer1_att: 0.0, layer2_att: 0.0 } ]->(node2) '
+                'DELETE e'
+            )
+            tx.run(query)
+
+        print('build attention graph')
         session = self.session
         for idx, row in attentions.iterrows():
+            # print(idx, lines)
             if idx % self.batch_size == 0:
                 # fulfil batchsize, commit lines
                 if len(lines) > 0:
-                    session.write_transaction(
-                        commit_batch_attention, x_type, y_type, relation, lines=lines)
+                    # session.write_transaction(
+                    #     commit_batch_attention, x_type, y_type, relation, lines=lines)
+                    try:
+                        commit_batch_attention(
+                            session, x_type, y_type, relation, lines=lines)
+                        delete_empty_edge(session)
+                    except Exception:
+                        print(idx, 'can not commit')
                 x_type = row['x_type']
                 y_type = row['y_type']
                 relation = row['relation']
@@ -162,22 +177,28 @@ class Neo4jApp:
                 }]
             else:
                 # commit previous lines, change x y type
-                session.write_transaction(
-                    commit_batch_attention, x_type, y_type, relation, lines=lines)
+                # session.write_transaction(
+                #     commit_batch_attention, x_type, y_type, relation, lines=lines)
+                commit_batch_attention(
+                    session, x_type, y_type, relation, lines=lines)
+                delete_empty_edge(session)
                 x_type = row['x_type']
                 y_type = row['y_type']
                 relation = row['relation']
                 lines = []
-        session.write_transaction(
-            commit_batch_attention, x_type, y_type, relation, lines=lines)
+        # session.write_transaction(
+        #     commit_batch_attention, x_type, y_type, relation, lines=lines)
+        commit_batch_attention(session, x_type, y_type, relation, lines=lines)
+        # session.write_transaction(delete_empty_edge)
+        delete_empty_edge(session)
 
-    def add_prediction(self):
+    def add_prediction(self, filename='result.pkl'):
 
         if not self.session:
             self.create_session()
 
         prediction = pd.read_pickle(os.path.join(
-            self.data_path, 'result.pkl'))['prediction']
+            self.data_path, filename))['prediction']
 
         def commit_batch_prediction(tx, lines):
             query = (
@@ -473,6 +494,5 @@ class Neo4jApp:
 
         metapaths.sort(key=lambda x: x['sum'], reverse=True)
         return metapaths
-
 
 # %%
