@@ -16,15 +16,15 @@ from flask import current_app, g
 
 def get_db():
     if 'db' not in g:
-        db = Neo4jApp(server='enterprise', database='icml')
+        db = Neo4jApp(server='enterprise', database='neo4j')
         db.create_session()
         g.db = db
     return g.db
 
 
 class Neo4jApp:
-    k1 = 10  # upper limit of children for root node
-    k2 = 5  # upper limit of children for hop-1 nodes
+    k1 = 12  # upper limit of children for root node
+    k2 = 7  # upper limit of children for hop-1 nodes
     top_n = 50  # write the predicted top n drugs to the graph database
 
     def __init__(self, server, password='reader_password', user='reader', datapath='./collab_delivery/', database='drug'):
@@ -56,7 +56,7 @@ class Neo4jApp:
 
         else:
             # enterprise version, password is instance id
-            host_name = 'ec2-18-224-215-224.us-east-2.compute.amazonaws.com'  # attention
+            host_name = 'ec2-18-222-212-215.us-east-2.compute.amazonaws.com'  # attention
             # host_name = 'ec2-18-219-216-202.us-east-2.compute.amazonaws.com' # graph mask
 
         # create driver
@@ -205,7 +205,8 @@ class Neo4jApp:
                 'UNWIND $lines as line '
                 'MATCH (node1: disease { id: line.x_id }) '
                 'MATCH (node2: drug { id: line.y_id }) '
-                'CREATE (node1)-[: Prediction { score: line.score, relation: "rev_indication" } ]->(node2) '
+                'MERGE (node1)-[r: Prediction { relation: "rev_indication" } ]->(node2) '
+                'SET r.score = line.score '
                 'RETURN node1, node2'
             )
             tx.run(query, lines=lines)
@@ -322,7 +323,7 @@ class Neo4jApp:
             'MATCH  (node: {node_type} {{ id: root_node.id }})<-[rel]-(neighbor) '
             'WHERE NOT (node)-[:Prediction]-(neighbor) '
             'WITH node, neighbor, rel '
-            'ORDER BY (rel.layer1_att ) DESC '
+            'ORDER BY (rel.layer1_att + rel.layer2_att ) DESC '
             'WITH node, '
             'collect([ neighbor, rel])[0..{k1}] AS neighbors_and_rels '
             'UNWIND neighbors_and_rels AS neighbor_and_rel '
