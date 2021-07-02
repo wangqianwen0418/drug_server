@@ -23,8 +23,8 @@ def get_db():
 
 
 class Neo4jApp:
-    k1 = 12  # upper limit of children for root node
-    k2 = 7  # upper limit of children for hop-1 nodes
+    k1 = 10  # upper limit of children for root node
+    k2 = 5  # upper limit of children for hop-1 nodes
     top_n = 50  # write the predicted top n drugs to the graph database
 
     def __init__(self, server, password='reader_password', user='reader', datapath='./collab_delivery/', database='drug'):
