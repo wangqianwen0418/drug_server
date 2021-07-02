@@ -16,7 +16,7 @@ from flask import current_app, g
 
 def get_db():
     if 'db' not in g:
-        db = Neo4jApp(server='mask2', database='neo4j')
+        db = Neo4jApp(server='enterprise', database='neo4j')
         db.create_session()
         g.db = db
     return g.db
@@ -54,13 +54,13 @@ class Neo4jApp:
             user = 'neo4j'
             self.database = 'neo4j'
 
-        # enterprise version, admin password is instance id
-        elif server == "attention":
-            host_name = 'ec2-18-222-212-215.us-east-2.compute.amazonaws.com'  # attention
-        elif server == 'mask':
-            host_name = 'ec2-13-59-13-212.us-east-2.compute.amazonaws.com'  # graph mask
         elif server == 'mask2':
             host_name = 'ec2-3-17-208-179.us-east-2.compute.amazonaws.com'  # graph mask2
+
+        else:
+            # enterprise version, password is instance id
+            host_name = 'ec2-18-224-215-224.us-east-2.compute.amazonaws.com'  # attention
+            # host_name = 'ec2-18-219-216-202.us-east-2.compute.amazonaws.com' # graph mask
 
         # create driver
         uri = "{scheme}://{host_name}:{port}".format(
@@ -195,19 +195,15 @@ class Neo4jApp:
         # session.write_transaction(delete_empty_edge)
         delete_empty_edge(session)
 
-    def remove_prediction(self):
-        if not self.session:
-            self.create_session()
-        query = ('match (:disease)-[e:Prediction]->(:drug) delete e')
-        self.session.run(query)
-
     def add_prediction(self, filename='result.pkl'):
 
         if not self.session:
             self.create_session()
 
-        prediction = pd.read_pickle(os.path.join(
-            self.data_path, filename))['prediction']
+        # prediction = pd.read_pickle(os.path.join(
+        #     self.data_path, filename))['prediction']
+        results = pd.read_pickle(os.path.join(
+            self.data_path, filename))
 
         def commit_batch_prediction(tx, lines):
             query = (
@@ -222,8 +218,9 @@ class Neo4jApp:
 
         lines = []
 
-        for disease in prediction["rev_indication"]:
-            drugs = prediction["rev_indication"][disease]
+        # for disease in prediction["rev_indication"]:
+        for disease in ['4975_7088_7089_11194_11561_11647_11777_12321_12344_12609_12630_12631_12632']:
+            drugs = pd.DataFrame(results['rev_indication'])['Prediction'][0]
             top_drugs = sorted(
                 drugs.items(), key=lambda item: item[1], reverse=True
             )[:Neo4jApp.top_n]
@@ -233,7 +230,7 @@ class Neo4jApp:
                 lines = []
             else:
                 lines += [
-                    {'x_id': disease, 'y_id': item[0], 'score':float(item[1])} for item in top_drugs
+                    {'x_id': disease, 'y_id': item[0], 'score':float(item[1])/3} for item in top_drugs
                 ]
         self.session.write_transaction(commit_batch_prediction, lines=lines)
 
@@ -341,7 +338,7 @@ class Neo4jApp:
             'neighbor_and_rel[1] AS rel '
             'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
             'WITH node, neighbor, rel, neighbor2, rel2 '
-            'ORDER BY rel2.layer1_att DESC '
+            'ORDER BY  (rel2.layer1_att ) DESC '
             'WITH node, neighbor, rel, '
             'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
             'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '

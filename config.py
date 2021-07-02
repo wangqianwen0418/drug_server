@@ -1,5 +1,5 @@
 import os
-from model_loader_static import ModelLoader
+# from model_loader_static import ModelLoader
 SERVER_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
