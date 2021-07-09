@@ -423,9 +423,10 @@ class Neo4jApp:
                                 metapaths.append(metapath)
 
         attention = {}
-        attention['disease'] = self.get_tree(
+        attention['{}:{}'.format('disease', disease_id)] = self.get_tree(
             disease_paths, 'diseaase', disease_id)
-        attention['drug'] = self.get_tree(drug_paths, 'drug', drug_id)
+        attention['{}:{}'.format('drug', drug_id)] = self.get_tree(
+            drug_paths, 'drug', drug_id)
 
         return {'attention': attention, "metapaths": metapaths}
 
