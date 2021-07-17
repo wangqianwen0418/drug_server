@@ -1,9 +1,9 @@
 branch-defaults:
   default:
-    environment: DrugServer2-env
+    environment: flask-env
     group_suffix: null
 global:
-  application_name: drug_server_2
+  application_name: drug_server
   branch: null
   default_ec2_keyname: null
   default_platform: Python 3.7
