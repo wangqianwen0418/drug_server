@@ -83,3 +83,15 @@ def get_drug_predictions():
     summary = db.query_metapath_summary()
 
     return jsonify({'predictions': predictions, 'metapath_summary': summary})
+
+@api.route('/link_pred', methods=['GET'])
+def get_link_pred():
+    '''
+    E.g.: [base_url]/api/drug_score?disease_id=5263.0&drug_id=DB06700
+    '''
+    
+    disease_id = request.args.get('disease_id', None, type=str)
+    drug_id = request.args.get('drug_id', None, type=str)
+    db = get_db()
+    predictions = db.query_drug_disease_pair(disease_id=disease_id, drug_id=drug_id)
+    return jsonify(predictions)

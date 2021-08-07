@@ -273,6 +273,22 @@ class Neo4jApp:
 
         return drugs
 
+    def query_drug_disease_pair(self, disease_id, drug_id):
+        def commit_drug_disease_query(tx, disease_id, drug_id):
+            query = (
+                'MATCH (:disease { id: $disease_id })-[edge:Prediction]->(node:drug {id: $drug_id}) '
+                'RETURN edge'
+            )
+            results = tx.run(query, disease_id=disease_id, drug_id=drug_id)
+            pred = [{'score': record['edge']['score'],
+                      'relation': record['edge']['relation']} for record in results]
+            return pred[0]
+
+        pred = self.session.read_transaction(
+            commit_drug_disease_query, disease_id, drug_id)
+
+        return pred
+
     @staticmethod
     def get_tree(results, node_type, node_id):
         """
