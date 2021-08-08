@@ -95,3 +95,10 @@ def get_link_pred():
     db = get_db()
     predictions = db.query_drug_disease_pair(disease_id=disease_id, drug_id=drug_id)
     return jsonify(predictions)
+
+@api.route('/post_json', methods=['POST'])
+def post_json():
+    values = request.json
+    with open('./user_forms/test.json', 'w') as f:
+        json.dump(values, f)
+    return values
