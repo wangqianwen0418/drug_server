@@ -3,7 +3,7 @@ import numpy as np
 
 import flask
 from flask import request, jsonify, Blueprint, current_app, g
-from utils import better_json_encoder
+from utils import better_json_encoder, upload_file_to_s3
 
 from database import get_db
 
@@ -84,21 +84,30 @@ def get_drug_predictions():
 
     return jsonify({'predictions': predictions, 'metapath_summary': summary})
 
+
 @api.route('/link_pred', methods=['GET'])
 def get_link_pred():
     '''
     E.g.: [base_url]/api/drug_score?disease_id=5263.0&drug_id=DB06700
     '''
-    
+
     disease_id = request.args.get('disease_id', None, type=str)
     drug_id = request.args.get('drug_id', None, type=str)
     db = get_db()
-    predictions = db.query_drug_disease_pair(disease_id=disease_id, drug_id=drug_id)
+    predictions = db.query_drug_disease_pair(
+        disease_id=disease_id, drug_id=drug_id)
     return jsonify(predictions)
+
 
 @api.route('/post_json', methods=['POST'])
 def post_json():
     values = request.json
-    with open('./user_forms/test.json', 'w') as f:
+    fileID = values['userID']
+    with open(f'./user_forms/{fileID}.json', 'w') as f:
         json.dump(values, f)
+
+    with open(f'./user_forms/{fileID}.json', 'rb') as f:
+        upload_file_to_s3(
+            f, current_app.config['S3_BUCKET'], current_app.config['S3_KEY'], current_app.config['S3_SECRET'], f'{fileID}.json')
+
     return values
