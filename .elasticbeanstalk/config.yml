@@ -1,11 +1,11 @@
 branch-defaults:
   default:
-    environment: userstudy-env
+    environment: drugvisuserstudy-env
     group_suffix: null
 global:
-  application_name: userstudy
+  application_name: drugvis-userstudy
   branch: null
-  default_ec2_keyname: drugvis
+  default_ec2_keyname: null
   default_platform: Python 3.8 running on 64bit Amazon Linux 2
   default_region: us-east-2
   include_git_submodules: true

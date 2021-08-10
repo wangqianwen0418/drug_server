@@ -3,7 +3,7 @@ import numpy as np
 
 import flask
 from flask import request, jsonify, Blueprint, current_app, g
-from utils import better_json_encoder, upload_file_to_s3
+from utils import better_json_encoder
 
 from database import get_db
 
@@ -105,9 +105,5 @@ def post_json():
     fileID = values['userID']
     with open(f'./user_forms/{fileID}.json', 'w') as f:
         json.dump(values, f)
-
-    with open(f'./user_forms/{fileID}.json', 'rb') as f:
-        upload_file_to_s3(
-            f, current_app.config['S3_BUCKET'], current_app.config['S3_KEY'], current_app.config['S3_SECRET'], f'{fileID}.json')
 
     return values
