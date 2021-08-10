@@ -1,12 +1,12 @@
 branch-defaults:
   default:
-    environment: DrugServer2-env
+    environment: userstudy-env
     group_suffix: null
 global:
-  application_name: drug_server_2
+  application_name: userstudy
   branch: null
-  default_ec2_keyname: null
-  default_platform: Python 3.7
+  default_ec2_keyname: drugvis
+  default_platform: Python 3.8 running on 64bit Amazon Linux 2
   default_region: us-east-2
   include_git_submodules: true
   instance_profile: null
