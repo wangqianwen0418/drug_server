@@ -18,6 +18,12 @@ def send_media(path):
     return send_from_directory(safe_join(current_app.config['STATIC_FOLDER'], 'media'), path)
 
 
+@vis.route('/assets/<path:path>')
+def send_assets(path):
+    return send_from_directory(safe_join(current_app.config['FRONT_ROOT'], 'assets'), path)
+
+
+
 @vis.route('/')
 def index():
     return send_from_directory(current_app.config['FRONT_ROOT'], 'index.html')
