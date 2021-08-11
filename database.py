@@ -419,8 +419,12 @@ class Neo4jApp:
                                 } for item in disease_path[:idx_a+1] +
                                 drug_path[:idx_b][::-1]]
 
-                            metapath_string = '-'.join([node['nodeId']
-                                                        for node in nodes])
+                            node_ids = [node['nodeId'] for node in nodes]
+
+                            # if duplicated items in path, ignore
+                            if len(node_ids) > len(set(node_ids)):
+                                continue
+                            metapath_string = '-'.join(node_ids)
                             if metapath_string in existing_path:
                                 pass
                             else:
@@ -489,8 +493,14 @@ class Neo4jApp:
                             # find a path, update metapath
                             items = disease_path[:idx_a+1] + \
                                 drug_path[:idx_b][::-1]
-                            path = '-'.join([item['node']['id']
-                                             for item in items])
+
+                            node_ids = [item['node']['id']
+                                             for item in items]
+                            
+                            # if duplicated items in path, ignore
+                            if len(node_ids) > len(set(node_ids)):
+                                continue
+                            path = '-'.join(node_ids)
 
                             metapath = list(
                                 map(lambda item: Neo4jApp.get_node_labels(item['node'])[0], items))
