@@ -16,15 +16,15 @@ from flask import current_app, g
 
 def get_db():
     if 'db' not in g:
-        db = Neo4jApp(server='mask2', database='neo4j')
+        db = Neo4jApp(server='attention', database='neo4j')
         db.create_session()
         g.db = db
     return g.db
 
 
 class Neo4jApp:
-    k1 = 10  # upper limit of children for root node
-    k2 = 5  # upper limit of children for hop-1 nodes
+    k1 = 12  # upper limit of children for root node
+    k2 = 7  # upper limit of children for hop-1 nodes
     top_n = 50  # write the predicted top n drugs to the graph database
 
     def __init__(self, server, password='reader_password', user='reader', datapath='./collab_delivery/', database='drug'):
@@ -281,7 +281,7 @@ class Neo4jApp:
             )
             results = tx.run(query, disease_id=disease_id, drug_id=drug_id)
             pred = [{'score': record['edge']['score'],
-                      'relation': record['edge']['relation']} for record in results]
+                     'relation': record['edge']['relation']} for record in results]
             return pred[0]
 
         pred = self.session.read_transaction(
@@ -495,8 +495,8 @@ class Neo4jApp:
                                 drug_path[:idx_b][::-1]
 
                             node_ids = [item['node']['id']
-                                             for item in items]
-                            
+                                        for item in items]
+
                             # if duplicated items in path, ignore
                             if len(node_ids) > len(set(node_ids)):
                                 continue
