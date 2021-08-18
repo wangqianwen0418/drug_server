@@ -312,7 +312,7 @@ class Neo4jApp:
 
             except Exception:  # item does not exist, insert a child
                 if depth == 0:
-                    score = 1
+                    score = 10
                     edgeInfo = ''
                 elif depth == 1:
                     score = (rel['layer1_att'] + rel['layer2_att'])
