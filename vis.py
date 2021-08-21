@@ -48,4 +48,6 @@ def send_data(path):
     '''
     requested data fileds will be downloaded in the local web browser.
     '''
+    if path == 'node_name_dict.json':
+        return send_from_directory(current_app.config['DATA_FOLDER'], f"{current_app.config['GNN']}_{path}")
     return send_from_directory(current_app.config['DATA_FOLDER'], path)

@@ -1,5 +1,6 @@
 
 collab_delivery/
+collab/
 __pycache__/
 model.py 
 model_loader.py

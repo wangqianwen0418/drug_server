@@ -31,7 +31,7 @@ class ModelLoader():
     def __init__(self, data_path=None):
         if (not data_path):
             self.data_path = os.path.join(
-                os.path.dirname(__file__), 'collab_delivery/')
+                os.path.dirname(__file__), 'collab/collab_delivery/')
         else:
             self.data_path = data_path
 
