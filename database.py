@@ -16,7 +16,7 @@ from flask import current_app, g
 
 def get_db():
     if 'db' not in g:
-        db = Neo4jApp(server='attention', database='neo4j')
+        db = Neo4jApp(server=current_app.config['GNN'], database='neo4j')
         db.create_session()
         g.db = db
     return g.db
@@ -57,8 +57,8 @@ class Neo4jApp:
         # enterprise version, admin password is instance id
         elif server == "attention":
             host_name = 'ec2-18-222-212-215.us-east-2.compute.amazonaws.com'  # attention
-        elif server == 'mask':
-            host_name = 'ec2-13-59-13-212.us-east-2.compute.amazonaws.com'  # graph mask
+        elif server == 'graphmask':
+            host_name = 'ec2-18-188-3-192.us-east-2.compute.amazonaws.com'  # graph mask latest
         elif server == 'mask2':
             host_name = 'ec2-3-17-208-179.us-east-2.compute.amazonaws.com'  # graph mask2
 
