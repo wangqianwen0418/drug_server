@@ -58,7 +58,7 @@ class Neo4jApp:
         elif server == "attention":
             host_name = 'ec2-18-222-212-215.us-east-2.compute.amazonaws.com'  # attention
         elif server == 'graphmask':
-            host_name = 'ec2-18-188-3-192.us-east-2.compute.amazonaws.com'  # graph mask latest
+            host_name = 'ec2-3-21-103-241.us-east-2.compute.amazonaws.com'  # graph mask latest
         elif server == 'mask2':
             host_name = 'ec2-3-17-208-179.us-east-2.compute.amazonaws.com'  # graph mask2
 
