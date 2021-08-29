@@ -32,6 +32,4 @@ update application
 eb deploy
 ```
 
-# ssh the eb instance
-eb ssh
-cd /var/app/current
+

@@ -9,17 +9,31 @@ import pandas as pd
 import os
 
 from config import SERVER_ROOT
+import json
 
 from flask import current_app, g
 # %%
-
-
 def get_db():
     if 'db' not in g:
         db = Neo4jApp(server=current_app.config['GNN'], database='neo4j')
         db.create_session()
         g.db = db
     return g.db
+
+#%%
+
+import math
+
+def sigmoid(x):
+  return 1 / (1 + math.exp(-x))
+
+def convert2str(x):
+        try:
+            x = float(x)
+        except:
+            pass
+
+        return str(x)
 
 
 class Neo4jApp:
@@ -58,7 +72,7 @@ class Neo4jApp:
         elif server == "attention":
             host_name = 'ec2-18-222-212-215.us-east-2.compute.amazonaws.com'  # attention
         elif server == 'graphmask':
-            host_name = 'ec2-18-188-3-192.us-east-2.compute.amazonaws.com'  # graph mask latest
+            host_name = 'ec2-18-116-204-62.us-east-2.compute.amazonaws.com'  # graph mask latest on t3.large
         elif server == 'mask2':
             host_name = 'ec2-3-17-208-179.us-east-2.compute.amazonaws.com'  # graph mask2
 
@@ -154,46 +168,106 @@ class Neo4jApp:
         print('build attention graph')
         session = self.session
         for idx, row in attentions.iterrows():
-            # print(idx, lines)
-            if idx % self.batch_size == 0:
-                # fulfil batchsize, commit lines
+            if row['x_type'] == x_type and row['y_type'] == y_type and relation == relation and len(lines) < self.batch_size:
+                # add new line
+                x_id = row['x_id']
+                y_id = row['y_id']
+                lines += [{
+                    'x_id': x_id, 'y_id': y_id,
+                    'x_name': row['x_name'],
+                    'y_name': row['y_name'],
+                    'layer1_att': row['layer1_att'],
+                    'layer2_att': row['layer2_att']
+                }]
+            else:
                 if len(lines) > 0:
                     # session.write_transaction(
                     #     commit_batch_attention, x_type, y_type, relation, lines=lines)
                     try:
                         commit_batch_attention(
                             session, x_type, y_type, relation, lines=lines)
-                        delete_empty_edge(session)
                     except Exception:
                         print(idx, 'can not commit')
+                        
                 x_type = row['x_type']
                 y_type = row['y_type']
                 relation = row['relation']
-                lines = []
-            elif row['x_type'] == x_type and row['y_type'] == y_type and relation == relation:
-                # add new line
-                lines += [{
-                    'x_id': row['x_id'], 'y_id': row['y_id'],
-                    'x_name': row['x_name'], 'y_name': row['y_name'],
+                x_id = row['x_id']
+                y_id = row['y_id']
+                lines = [{
+                    'x_id': x_id, 'y_id': y_id,
+                    'x_name': row['x_name'],
+                    'y_name': row['y_name'],
                     'layer1_att': row['layer1_att'],
                     'layer2_att': row['layer2_att']
                 }]
-            else:
-                # commit previous lines, change x y type
-                # session.write_transaction(
-                #     commit_batch_attention, x_type, y_type, relation, lines=lines)
-                commit_batch_attention(
-                    session, x_type, y_type, relation, lines=lines)
-                delete_empty_edge(session)
-                x_type = row['x_type']
-                y_type = row['y_type']
-                relation = row['relation']
-                lines = []
         # session.write_transaction(
         #     commit_batch_attention, x_type, y_type, relation, lines=lines)
         commit_batch_attention(session, x_type, y_type, relation, lines=lines)
         # session.write_transaction(delete_empty_edge)
         delete_empty_edge(session)
+
+    def update_edgeInfo(self, filename='attention_all.csv'):
+
+        if not self.session:
+            self.create_session()
+
+        attention_path = os.path.join(self.data_path, filename)
+        print('read attention file')
+        attentions = pd.read_csv(attention_path, dtype={
+            'x_id': 'string', 'y_id': 'string'})
+
+        lines = []
+        x_type = ''
+        y_type = ''
+        relation = ''
+
+        def commit_batch_attention(tx, x_type, y_type, relation, lines):
+            query = (
+                'UNWIND $lines as line '
+                'MATCH (node1: `{x_type}` {{ id: line.x_id }})-[e]-(node2: `{y_type}` {{ id: line.y_id }}) '
+                'SET e.edge_info = line.display_relation '
+            ).format(x_type=x_type,  y_type=y_type, relation=relation)
+            tx.run(query, lines=lines)
+
+
+        print('build attention graph')
+        session = self.session
+        for idx, row in attentions.iterrows():
+            if row['x_type'] == x_type and row['y_type'] == y_type and relation == relation and len(lines) < self.batch_size:
+                # add new line
+                x_id = convert2str(row['x_id'])
+                y_id = convert2str(row['y_id'])
+                lines += [{
+                    'x_id': x_id, 'y_id': y_id,
+                    'display_relation': row['display_relation'],
+                }]
+            else:
+                if len(lines) > 0:
+                    # session.write_transaction(
+                    #     commit_batch_attention, x_type, y_type, relation, lines=lines)
+                    try:
+                        commit_batch_attention(
+                            session, x_type, y_type, relation, lines=lines)
+                    except Exception:
+                        print(idx, 'can not commit')
+                        
+                x_type = row['x_type']
+                y_type = row['y_type']
+                relation = row['relation']
+                x_id = str(row['x_id'])
+                if not '_' in x_id:
+                    x_id = x_id + '.0'
+                y_id = str(row['y_id'])
+                if not '_' in y_id:
+                    y_id = y_id + '.0'
+                lines = [{
+                    'x_id': x_id, 'y_id': y_id,
+                    'display_relation': row['display_relation'],
+                }]
+        # session.write_transaction(
+        #     commit_batch_attention, x_type, y_type, relation, lines=lines)
+        commit_batch_attention(session, x_type, y_type, relation, lines=lines)
 
     def remove_prediction(self):
         if not self.session:
@@ -206,8 +280,11 @@ class Neo4jApp:
         if not self.session:
             self.create_session()
 
-        prediction = pd.read_pickle(os.path.join(
-            self.data_path, filename))['prediction']
+        # prediction = pd.read_pickle(os.path.join(
+        #     self.data_path, filename))['prediction']
+        with open (os.path.join(self.data_path, filename), 'r') as f:
+            prediction = json.load(f)
+            prediction = prediction['prediction']
 
         def commit_batch_prediction(tx, lines):
             query = (
@@ -233,7 +310,7 @@ class Neo4jApp:
                 lines = []
             else:
                 lines += [
-                    {'x_id': disease, 'y_id': item[0], 'score':float(item[1])} for item in top_drugs
+                    {'x_id': disease, 'y_id': item[0], 'score': sigmoid(float(item[1]))} for item in top_drugs
                 ]
         self.session.write_transaction(commit_batch_prediction, lines=lines)
 
@@ -316,10 +393,10 @@ class Neo4jApp:
                     edgeInfo = ''
                 elif depth == 1:
                     score = (rel['layer1_att'] + rel['layer2_att'])
-                    edgeInfo = rel.type
+                    edgeInfo = rel['edge_info'] if rel['edge_info'] else rel.type
                 else:
                     score = (rel['layer1_att'])
-                    edgeInfo = rel.type
+                    edgeInfo = rel['edge_info'] if rel['edge_info'] else rel.type
                 children.append({
                     'nodeId': node['id'],
                     'nodeType': Neo4jApp.get_node_labels(node)[0],
@@ -397,7 +474,7 @@ class Neo4jApp:
             Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}])
 
         def convert(e, i):
-            return {'edgeInfo': e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
+            return {'edgeInfo': e['edge_info'] if e['edge_info'] else e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
 
         metapaths = []
         existing_path = []
