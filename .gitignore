@@ -12,5 +12,6 @@ collab_delivery
 collab/
 node_emb_disease_sim/
 *.pem
-user_forms/
+user_forms/*
+!user_forms/*.py
 key.py
