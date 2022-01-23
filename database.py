@@ -23,8 +23,8 @@ def get_db():
 
 
 class Neo4jApp:
-    k1 = 10  # upper limit of children for root node
-    k2 = 5  # upper limit of children for hop-1 nodes
+    k1 = 12  # upper limit of children for root node
+    k2 = 7  # upper limit of children for hop-1 nodes
     top_n = 50  # write the predicted top n drugs to the graph database
 
     def __init__(self, server, password='reader_password', user='reader', datapath='./collab_delivery/', database='drug'):
@@ -58,7 +58,7 @@ class Neo4jApp:
         elif server == "attention":
             host_name = 'ec2-18-222-212-215.us-east-2.compute.amazonaws.com'  # attention
         elif server == 'graphmask':
-            host_name = 'ec2-3-21-103-241.us-east-2.compute.amazonaws.com'  # graph mask latest
+            host_name = 'ec2-18-116-204-62.us-east-2.compute.amazonaws.com'  # graph mask latest
         elif server == 'mask2':
             host_name = 'ec2-3-17-208-179.us-east-2.compute.amazonaws.com'  # graph mask2
 
@@ -268,6 +268,7 @@ class Neo4jApp:
 
         drugs = self.session.read_transaction(
             commit_drugs_query, disease_id)
+        drugs = drugs[1:3] + drugs[6:]
         self.current_disease = disease_id
         self.drugs = drugs
 
@@ -316,10 +317,10 @@ class Neo4jApp:
                     edgeInfo = ''
                 elif depth == 1:
                     score = (rel['layer1_att'] + rel['layer2_att'])
-                    edgeInfo = rel.type
+                    edgeInfo = rel['edge_info'] if rel['edge_info']  else rel.type
                 else:
                     score = (rel['layer1_att'])
-                    edgeInfo = rel.type
+                    edgeInfo = rel['edge_info'] if rel['edge_info']  else rel.type
                 children.append({
                     'nodeId': node['id'],
                     'nodeType': Neo4jApp.get_node_labels(node)[0],
@@ -397,7 +398,7 @@ class Neo4jApp:
             Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}])
 
         def convert(e, i):
-            return {'edgeInfo': e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
+            return {'edgeInfo': e['edge_info'] if e['edge_info']  else e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
 
         metapaths = []
         existing_path = []
