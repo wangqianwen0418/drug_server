@@ -1,6 +1,8 @@
 #%%
 import json
+from multiprocessing import Condition
 import os
+from datetime import datetime
 condition_name = {
     'domain': 'ours',
     'graph': 'subgraph',
@@ -77,6 +79,7 @@ metric = ['understand', 'trust', 'helpful', 'willToUse']
 conditions = ['domain', 'graph', 'model', 'baseline']
 levels = ['strongly disagree', 'disagree', 'neutral' , 'agree', 'strongly agree']
 
+# %% post-study questionnaire
 results = {}
 for m in metric:
     results[m] = {}
@@ -262,4 +265,35 @@ with open('./result_anova/confidence_results_2.json', 'w') as f:
 
 with open('./result_anova/confidence_results.json', 'w') as f:
     json.dump(confidence_res, f)
+
+# %%
+# TIME
+############
+time_results = {}
+for c in conditions:
+    time_results[c] = []
+
+for filename in os.listdir('./'):
+    if filename.endswith('.json') and not 'results' in filename:
+        
+        with open(f'./{filename}') as f:
+            person_time = {}
+            for c in conditions:
+                person_time[c] = []
+            content = json.load(f)
+            questions = content["questions"]
+            if (len(questions)<16):
+                print(filename)
+            prev_time = content["answers"][5]['timeStamp']
+            prev_time = datetime.fromisoformat(prev_time.replace('Z', ''))
+            answers =  content["answers"][6:22]
+            for i, ans in enumerate(answers):
+                condition = questions[i]["condition"]
+                now_time = ans['timeStamp']
+                now_time = datetime.fromisoformat(now_time.replace('Z', ''))
+                person_time[condition].append( (now_time-prev_time).seconds)
+                prev_time = now_time
+
+            for c in conditions:
+                time_results[c].append(sum(person_time[c])/len(person_time[c]))
 # %%
