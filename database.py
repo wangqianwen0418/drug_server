@@ -16,7 +16,7 @@ from flask import current_app, g
 
 def get_db():
     if 'db' not in g:
-        db = Neo4jApp(server='attention', database='neo4j')
+        db = Neo4jApp(server=current_app.config['GNN'], database='neo4j')
         db.create_session()
         g.db = db
     return g.db
@@ -57,8 +57,8 @@ class Neo4jApp:
         # enterprise version, admin password is instance id
         elif server == "attention":
             host_name = 'ec2-18-222-212-215.us-east-2.compute.amazonaws.com'  # attention
-        elif server == 'mask':
-            host_name = 'ec2-18-216-195-0.us-east-2.compute.amazonaws.com'  # graph mask
+        elif server == 'graphmask':
+            host_name = 'ec2-18-188-3-192.us-east-2.compute.amazonaws.com'  # graph mask latest
         elif server == 'mask2':
             host_name = 'ec2-3-17-208-179.us-east-2.compute.amazonaws.com'  # graph mask2
 
@@ -273,6 +273,22 @@ class Neo4jApp:
 
         return drugs
 
+    def query_drug_disease_pair(self, disease_id, drug_id):
+        def commit_drug_disease_query(tx, disease_id, drug_id):
+            query = (
+                'MATCH (:disease { id: $disease_id })-[edge:Prediction]->(node:drug {id: $drug_id}) '
+                'RETURN edge'
+            )
+            results = tx.run(query, disease_id=disease_id, drug_id=drug_id)
+            pred = [{'score': record['edge']['score'],
+                     'relation': record['edge']['relation']} for record in results]
+            return pred[0]
+
+        pred = self.session.read_transaction(
+            commit_drug_disease_query, disease_id, drug_id)
+
+        return pred
+
     @staticmethod
     def get_tree(results, node_type, node_id):
         """
@@ -403,8 +419,12 @@ class Neo4jApp:
                                 } for item in disease_path[:idx_a+1] +
                                 drug_path[:idx_b][::-1]]
 
-                            metapath_string = '-'.join([node['nodeId']
-                                                        for node in nodes])
+                            node_ids = [node['nodeId'] for node in nodes]
+
+                            # if duplicated items in path, ignore
+                            if len(node_ids) > len(set(node_ids)):
+                                continue
+                            metapath_string = '-'.join(node_ids)
                             if metapath_string in existing_path:
                                 pass
                             else:
@@ -473,8 +493,13 @@ class Neo4jApp:
                             # find a path, update metapath
                             items = disease_path[:idx_a+1] + \
                                 drug_path[:idx_b][::-1]
-                            path = '-'.join([item['node']['id']
-                                             for item in items])
+                            node_ids = [item['node']['id']
+                                        for item in items]
+
+                            # if duplicated items in path, ignore
+                            if len(node_ids) > len(set(node_ids)):
+                                continue
+                            path = '-'.join(node_ids)
 
                             metapath = list(
                                 map(lambda item: Neo4jApp.get_node_labels(item['node'])[0], items))
