@@ -27,7 +27,7 @@ class Neo4jApp:
     k2 = 7  # upper limit of children for hop-1 nodes
     top_n = 50  # write the predicted top n drugs to the graph database
 
-    def __init__(self, server, password='reader_password', user='reader', datapath='./collab_delivery/', database='drug'):
+    def __init__(self, server, password='reader_password', user='reader', datapath='./colab_delivery/', database='drug'):
         self.node_types = [
             "anatomy",
             "biological_process",
