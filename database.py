@@ -455,7 +455,7 @@ class Neo4jApp:
     def get_node_labels(node):
         return list(node.labels)
 
-    def query_metapath_summary(self):
+    def query_metapath_summary(self, top_n):
 
         if not self.session:
             self.create_session()
@@ -463,7 +463,7 @@ class Neo4jApp:
         assert self.current_disease is not None, 'should assign a disease id first'
 
         if not self.drugs:
-            self.query_predicted_drugs(self.current_disease)
+            self.query_predicted_drugs(self.current_disease, top_n)
 
         drug_paths = self.session.read_transaction(
             Neo4jApp.commit_batch_attention_query, 'drug', self.drugs)
