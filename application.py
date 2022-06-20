@@ -54,7 +54,7 @@ def create_app(config=None):
 parser = argparse.ArgumentParser()
 parser.add_argument('--host', default='0.0.0.0',
                     help='Port in which to run the API')
-parser.add_argument('--port', default=8001,
+parser.add_argument('--port', default=8002,
                     help='Port in which to run the API')
 parser.add_argument('--debug', action="store_const", default=True, const=True,
                     help='If true, run Flask in debug mode')

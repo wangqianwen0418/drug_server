@@ -1,3 +1,8 @@
+#############
+# host at http://flask-env.eba-varw8jnv.us-east-2.elasticbeanstalk.com/,
+# also to http://drugexplorer.gehlenborglab.org
+#############
+
 branch-defaults:
   default:
     environment: flask-env
@@ -16,3 +21,16 @@ global:
   repository: null
   sc: null
   workspace_type: Application
+#############
+# host at drugexplorer.us-east-2.elasticbeanstalk.com
+#############
+
+# branch-defaults:
+#   default:
+#     environment: DrugServer2-env
+#     group_suffix: null
+# global:
+#   application_name: drug_server_2
+#   branch: null
+#   default_ec2_keyname: null
+#   default_platform: Python 3.7
