@@ -9,6 +9,7 @@ import pandas as pd
 import os
 
 from config import SERVER_ROOT
+from mykeys import get_keys
 
 from flask import current_app, g
 # %%
@@ -27,7 +28,7 @@ class Neo4jApp:
     k2 = 7  # upper limit of children for hop-1 nodes
     top_n = 50  # write the predicted top n drugs to the graph database
 
-    def __init__(self, server, password='reader_password', user='reader', datapath='./colab_delivery/', database='drug'):
+    def __init__(self, server, password, user, datapath, database):
         self.node_types = [
             "anatomy",
             "biological_process",
@@ -45,22 +46,10 @@ class Neo4jApp:
 
         scheme = "bolt"
         port = 7687
+
+        (host_name, user, password, datapath, database) = get_keys(server, password, user, datapath, database)
         self.data_path = datapath
         self.database = database
-
-        if server == 'local':
-            host_name = "localhost"
-            password = 'password'
-            user = 'neo4j'
-            self.database = 'neo4j'
-
-        # enterprise version, admin password is instance id
-        elif server == "attention":
-            host_name = 'ec2-18-222-212-215.us-east-2.compute.amazonaws.com'  # attention
-        elif server == 'graphmask':
-            host_name = 'ec2-18-116-204-62.us-east-2.compute.amazonaws.com'  # graph mask latest
-        elif server == 'mask2':
-            host_name = 'ec2-3-17-208-179.us-east-2.compute.amazonaws.com'  # graph mask2
 
         # create driver
         uri = "{scheme}://{host_name}:{port}".format(
