@@ -266,14 +266,11 @@ class Neo4jApp:
 
         def commit_diseases_query(tx):
             query = (
-                # 'MATCH (node:disease)-[:Prediction]->(:drug)'
-                'MATCH (node:disease)'
-                'RETURN node'
+                'MATCH (node:disease) '
+                'RETURN node.id'
             )
             results = tx.run(query)
-            disease_ids = [record['node']['id'] for record in results]
-            disease_ids = list(set(disease_ids))
-            return disease_ids
+            return list([k[0] for k in results])
 
         return self.session.read_transaction(commit_diseases_query)
 
@@ -544,6 +541,6 @@ class Neo4jApp:
 # %%
 
 if __name__ == '__main__':
-    db = Neo4jApp(server='txgnn', user='neo4j', database='neo4j')
+    db = Neo4jApp(server='txgnn', user='neo4j',password = 'neo4jpassword', database='neo4j')
     db.init_database()
 # %%
