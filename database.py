@@ -188,42 +188,6 @@ class Neo4jApp:
         query = ('match (:disease)-[e:Prediction]->(:drug) delete e')
         self.session.run(query)
 
-    # def add_prediction(self, filename='result.pkl'):
-
-    #     if not self.session:
-    #         self.create_session()
-
-    #     prediction = pd.read_pickle(os.path.join(
-    #         self.data_path, filename))['prediction']
-
-    #     def commit_batch_prediction(tx, lines):
-    #         query = (
-    #             'UNWIND $lines as line '
-    #             'MATCH (node1: disease { id: line.x_id }) '
-    #             'MATCH (node2: drug { id: line.y_id }) '
-    #             'MERGE (node1)-[r: Prediction { relation: "rev_indication" } ]->(node2) '
-    #             'SET r.score = line.score '
-    #             'RETURN node1, node2'
-    #         )
-    #         tx.run(query, lines=lines)
-
-    #     lines = []
-
-    #     for disease in prediction["rev_indication"]:
-    #         drugs = prediction["rev_indication"][disease]
-    #         top_drugs = sorted(
-    #             drugs.items(), key=lambda item: item[1], reverse=True
-    #         )[:Neo4jApp.top_n]
-    #         if len(lines) >= self.batch_size:
-    #             self.session.write_transaction(
-    #                 commit_batch_prediction, lines=lines)
-    #             lines = []
-    #         else:
-    #             lines += [
-    #                 {'x_id': disease, 'y_id': item[0], 'score':float(item[1])} for item in top_drugs
-    #             ]
-    #     self.session.write_transaction(commit_batch_prediction, lines=lines)
-
     def add_prediction(self, filename='result.pkl'):
 
         if not self.session:
@@ -272,7 +236,18 @@ class Neo4jApp:
             results = tx.run(query)
             return list([k[0] for k in results])
 
-        return self.session.read_transaction(commit_diseases_query)
+        def commit_treatable_diseases_query(tx):
+            query = (
+                'MATCH (node:disease)-[e:rev_indication]->(:drug) '
+                'RETURN node.id'
+            )
+            results = tx.run(query)
+            return list(set([k[0] for k in results])) # set to remove duplicate
+        
+        all_disease = self.session.read_transaction(commit_diseases_query)
+        treatable_diseases = self.session.read_transaction(commit_treatable_diseases_query)
+
+        return [ [ d, True if d in treatable_diseases else False] for d in all_disease] 
 
     def query_predicted_drugs(self, disease_id, top_n):
 
