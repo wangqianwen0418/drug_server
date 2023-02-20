@@ -73,7 +73,7 @@ def get_drug_predictions():
         metapath_summary: {node_types: string[], count: number}[]
         }
     '''
-    TOP_N = 15  # default, query top 10 predictions
+    TOP_N = 500
     disease_id = request.args.get('disease_id', None, type=str)
     top_n = request.args.get('top_n', TOP_N, type=int)
     db = get_db()

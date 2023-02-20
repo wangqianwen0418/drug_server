@@ -7,6 +7,7 @@ from neo4j.exceptions import ServiceUnavailable
 
 import pandas as pd
 import os
+import json
 
 from config import SERVER_ROOT
 from mykeys import get_keys
@@ -26,9 +27,9 @@ def get_db():
 class Neo4jApp:
     k1 = 12  # upper limit of children for root node
     k2 = 7  # upper limit of children for hop-1 nodes
-    top_n = 50  # write the predicted top n drugs to the graph database
+    top_n = 500  # write the predicted top n drugs to the graph database
 
-    def __init__(self, server, password, user, datapath, database):
+    def __init__(self, server, password='reader_password', user='reader', datapath='./colab_delivery/', database='drug'):
         self.node_types = [
             "anatomy",
             "biological_process",
@@ -190,6 +191,42 @@ class Neo4jApp:
         query = ('match (:disease)-[e:Prediction]->(:drug) delete e')
         self.session.run(query)
 
+    # def add_prediction(self, filename='result.pkl'):
+
+    #     if not self.session:
+    #         self.create_session()
+
+    #     prediction = pd.read_pickle(os.path.join(
+    #         self.data_path, filename))['prediction']
+
+    #     def commit_batch_prediction(tx, lines):
+    #         query = (
+    #             'UNWIND $lines as line '
+    #             'MATCH (node1: disease { id: line.x_id }) '
+    #             'MATCH (node2: drug { id: line.y_id }) '
+    #             'MERGE (node1)-[r: Prediction { relation: "rev_indication" } ]->(node2) '
+    #             'SET r.score = line.score '
+    #             'RETURN node1, node2'
+    #         )
+    #         tx.run(query, lines=lines)
+
+    #     lines = []
+
+    #     for disease in prediction["rev_indication"]:
+    #         drugs = prediction["rev_indication"][disease]
+    #         top_drugs = sorted(
+    #             drugs.items(), key=lambda item: item[1], reverse=True
+    #         )[:Neo4jApp.top_n]
+    #         if len(lines) >= self.batch_size:
+    #             self.session.write_transaction(
+    #                 commit_batch_prediction, lines=lines)
+    #             lines = []
+    #         else:
+    #             lines += [
+    #                 {'x_id': disease, 'y_id': item[0], 'score':float(item[1])} for item in top_drugs
+    #             ]
+    #     self.session.write_transaction(commit_batch_prediction, lines=lines)
+
     def add_prediction(self, filename='result.pkl'):
 
         if not self.session:
@@ -201,11 +238,9 @@ class Neo4jApp:
         def commit_batch_prediction(tx, lines):
             query = (
                 'UNWIND $lines as line '
-                'MATCH (node1: disease { id: line.x_id }) '
-                'MATCH (node2: drug { id: line.y_id }) '
-                'MERGE (node1)-[r: Prediction { relation: "rev_indication" } ]->(node2) '
-                'SET r.score = line.score '
-                'RETURN node1, node2'
+                'MATCH (node: disease { id: line.disease_id }) '
+                'SET node.prediction = line.predictions '
+                'RETURN node'
             )
             tx.run(query, lines=lines)
 
@@ -216,13 +251,14 @@ class Neo4jApp:
             top_drugs = sorted(
                 drugs.items(), key=lambda item: item[1], reverse=True
             )[:Neo4jApp.top_n]
+
             if len(lines) >= self.batch_size:
                 self.session.write_transaction(
                     commit_batch_prediction, lines=lines)
                 lines = []
             else:
                 lines += [
-                    {'x_id': disease, 'y_id': item[0], 'score':float(item[1])} for item in top_drugs
+                    {'disease_id': disease, 'predictions': json.dump([drug[:2] for drug in top_drugs])} # drug[:2] -> drug_id, score
                 ]
         self.session.write_transaction(commit_batch_prediction, lines=lines)
 
@@ -233,7 +269,8 @@ class Neo4jApp:
 
         def commit_diseases_query(tx):
             query = (
-                'MATCH (node:disease)-[:Prediction]->(:drug)'
+                # 'MATCH (node:disease)-[:Prediction]->(:drug)'
+                'MATCH (node:disease)'
                 'RETURN node'
             )
             results = tx.run(query)
