@@ -8,7 +8,8 @@
 __pycache__/
 build/
 data/
-colab_delivery
+colab_delivery/*
+!colab_delivery/*.py
 node_emb_disease_sim/
 *.pem
 mykeys.py

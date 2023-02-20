@@ -11,9 +11,8 @@ import json
 
 from config import SERVER_ROOT
 from mykeys import get_keys
-
+#%%
 from flask import current_app, g
-# %%
 
 
 def get_db():
@@ -24,6 +23,7 @@ def get_db():
     return g.db
 
 
+#%%
 class Neo4jApp:
     k1 = 12  # upper limit of children for root node
     k2 = 7  # upper limit of children for hop-1 nodes
@@ -45,16 +45,12 @@ class Neo4jApp:
         self.batch_size = 5000
         # self.data_path = 'https://drug-gnn-models.s3.us-east-2.amazonaws.com/collaboration_delivery/'
 
-        scheme = "bolt"
-        port = 7687
 
-        (host_name, user, password, datapath, database) = get_keys(server, password, user, datapath, database)
+
+        (uri, user, password, datapath, database) = get_keys(server, password, user, datapath, database)
         self.data_path = datapath
         self.database = database
 
-        # create driver
-        uri = "{scheme}://{host_name}:{port}".format(
-            scheme=scheme, host_name=host_name, port=port)
         try:
             self.driver = GraphDatabase.driver(
                 uri, auth=(user, password), encrypted=False, max_connection_lifetime=400)
@@ -63,6 +59,7 @@ class Neo4jApp:
 
         self.current_disease = None
         self.drugs = None
+        self.session = None
 
     def create_session(self):
         self.session = self.driver.session(database=self.database)
@@ -103,11 +100,11 @@ class Neo4jApp:
         self.create_index()
         print('build attention graph...')
         self.build_attention()
-        print('build prediction graph...')
+        print('add predictions...')
         self.add_prediction()
         print('database initialization finished')
 
-    def build_attention(self, filename='attention_all.csv'):
+    def build_attention(self, filename='test_attention.csv'):
 
         if not self.session:
             self.create_session()
@@ -239,7 +236,7 @@ class Neo4jApp:
             query = (
                 'UNWIND $lines as line '
                 'MATCH (node: disease { id: line.disease_id }) '
-                'SET node.prediction = line.predictions '
+                'SET node.predictions = line.predictions '
                 'RETURN node'
             )
             tx.run(query, lines=lines)
@@ -258,7 +255,7 @@ class Neo4jApp:
                 lines = []
             else:
                 lines += [
-                    {'disease_id': disease, 'predictions': json.dump([drug[:2] for drug in top_drugs])} # drug[:2] -> drug_id, score
+                    {'disease_id': disease, 'predictions': json.dumps([ [drug[0], float(drug[1])] for drug in top_drugs])} # drug[:2] -> drug_id, score
                 ]
         self.session.write_transaction(commit_batch_prediction, lines=lines)
 
@@ -283,38 +280,24 @@ class Neo4jApp:
     def query_predicted_drugs(self, disease_id, top_n):
 
         def commit_drugs_query(tx, disease_id):
+            # query = (
+            #     'MATCH (:disease { id: $id })-[edge:Prediction]->(node:drug)'
+            #     'RETURN node, edge ORDER BY edge.score DESC LIMIT $top_n'
+            # )
             query = (
-                'MATCH (:disease { id: $id })-[edge:Prediction]->(node:drug)'
-                'RETURN node, edge ORDER BY edge.score DESC LIMIT $top_n'
+                'MATCH (node:disease { id: $id })'
+                'RETURN node.predictions'
             )
             results = tx.run(query, id=disease_id, top_n=top_n)
-            drugs = [{'score': record['edge']['score'],
-                      'id': record['node']['id']} for record in results]
+            drugs = [{'score': record[1], 'id': record[0]} for record in results]
             return drugs
 
         drugs = self.session.read_transaction(
             commit_drugs_query, disease_id)
-        drugs = drugs[1:3] + drugs[6:]
         self.current_disease = disease_id
         self.drugs = drugs
 
         return drugs
-
-    def query_drug_disease_pair(self, disease_id, drug_id):
-        def commit_drug_disease_query(tx, disease_id, drug_id):
-            query = (
-                'MATCH (:disease { id: $disease_id })-[edge:Prediction]->(node:drug {id: $drug_id}) '
-                'RETURN edge'
-            )
-            results = tx.run(query, disease_id=disease_id, drug_id=drug_id)
-            pred = [{'score': record['edge']['score'],
-                     'relation': record['edge']['relation']} for record in results]
-            return pred[0]
-
-        pred = self.session.read_transaction(
-            commit_drug_disease_query, disease_id, drug_id)
-
-        return pred
 
     @staticmethod
     def get_tree(results, node_type, node_id):
@@ -558,4 +541,9 @@ class Neo4jApp:
         metapaths.sort(key=lambda x: x['sum'], reverse=True)
         return metapaths
 
+# %%
+
+if __name__ == '__main__':
+    db = Neo4jApp(server='txgnn', user='neo4j', database='neo4j')
+    db.init_database()
 # %%
