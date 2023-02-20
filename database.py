@@ -286,8 +286,10 @@ class Neo4jApp:
                 'RETURN node.predictions'
             )
             results = tx.run(query, id=disease_id, top_n=top_n)
-            drugs = [{'score': record[1], 'id': record[0]} for record in results]
-            return drugs
+            
+            drugs = json.loads(results.data()[0]['node.predictions'])
+            
+            return [{'score':drug[1], 'id': drug[0]} for drug in drugs]
 
         drugs = self.session.read_transaction(
             commit_drugs_query, disease_id)
