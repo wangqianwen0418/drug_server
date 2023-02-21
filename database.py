@@ -402,7 +402,7 @@ class Neo4jApp:
         def convert(e, i):
             return {'edgeInfo': e['edge_info'] if e['edge_info']  else e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
 
-        metapaths = []
+        paths = []
         existing_path = []
 
         for disease_path in disease_paths:
@@ -414,7 +414,7 @@ class Neo4jApp:
                         type_a = Neo4jApp.get_node_labels(node_a)[0]
                         type_b = Neo4jApp.get_node_labels(node_b)[0]
                         if type_a == type_b and node_a['id'] == node_b['id']:
-                            # find a path, update metapath
+                            # find a path, update path
                             nodes = [
                                 {
                                     'nodeId': item['node']['id'],
@@ -427,11 +427,11 @@ class Neo4jApp:
                             # if duplicated items in path, ignore
                             if len(node_ids) > len(set(node_ids)):
                                 continue
-                            metapath_string = '-'.join(node_ids)
-                            if metapath_string in existing_path:
+                            path_string = '-'.join(node_ids)
+                            if path_string in existing_path:
                                 pass
                             else:
-                                existing_path.append(metapath_string)
+                                existing_path.append(path_string)
                                 # the edge calculation is tricky here
                                 edges = [convert(item['rel'], i) for i, item in enumerate(disease_path[1:idx_a+1])] + (
                                     [convert(item['rel'], i) for i, item in enumerate(
@@ -439,11 +439,11 @@ class Neo4jApp:
                                      ][::-1]
                                 )
 
-                                metapath = {
+                                path = {
                                     'nodes': nodes,
                                     'edges': edges
                                 }
-                                metapaths.append(metapath)
+                                paths.append(path)
 
         attention = {}
         attention['{}:{}'.format('disease', disease_id)] = self.get_tree(
@@ -451,7 +451,7 @@ class Neo4jApp:
         attention['{}:{}'.format('drug', drug_id)] = self.get_tree(
             drug_paths, 'drug', drug_id)
 
-        return {'attention': attention, "metapaths": metapaths}
+        return {'attention': attention, "paths": paths}
 
     @staticmethod
     def get_node_labels(node):

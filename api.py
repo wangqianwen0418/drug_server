@@ -50,7 +50,7 @@ def get_attention():
 @api.route('/attention_pair', methods=['GET'])
 def get_attention_pair():
     '''
-    :return: {'attention': {key: attentionTree}, 'metapaths': metapath[]}
+    :return: {'attention': {key: attentionTree}, 'paths': path[]}
     E.g.: [base_url]/api/attention_pair?disease=0&drug=0
     '''
     disease_id = request.args.get('disease', None, type=str)
