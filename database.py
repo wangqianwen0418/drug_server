@@ -282,7 +282,10 @@ class Neo4jApp:
         
         known_drugs = self.session.read_transaction(commit_known_drug_query, disease_id)
 
-        drugs = [ { 'score':drug[1], 'id': drug[0], "known": True if drug[0] in known_drugs else False } for drug in predicted_drugs]
+        drugs = [ 
+            { 'score':drug[1], 'id': drug[0], "known": True if drug[0] in known_drugs else False } 
+            for drug in predicted_drugs[:top_n]
+        ]
 
         self.current_disease = disease_id
         self.drugs = drugs

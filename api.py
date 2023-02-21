@@ -80,6 +80,6 @@ def get_drug_predictions():
     predictions = db.query_predicted_drugs(
         disease_id=disease_id, top_n=top_n)
 
-    summary = db.query_metapath_summary(top_n=top_n)
+    # summary = db.query_metapath_summary(top_n=top_n)
 
-    return jsonify({'predictions': predictions, 'metapath_summary': summary})
+    return jsonify(predictions)
