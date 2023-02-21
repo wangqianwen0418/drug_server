@@ -251,7 +251,7 @@ class Neo4jApp:
 
     def query_predicted_drugs(self, disease_id, top_n):
 
-        def commit_drugs_query(tx, disease_id):
+        def commit_pred_drugs_query(tx, disease_id):
             # query = (
             #     'MATCH (:disease { id: $id })-[edge:Prediction]->(node:drug)'
             #     'RETURN node, edge ORDER BY edge.score DESC LIMIT $top_n'
@@ -262,12 +262,28 @@ class Neo4jApp:
             )
             results = tx.run(query, id=disease_id, top_n=top_n)
             
-            drugs = json.loads(results.data()[0]['node.predictions'])
+            predicted_drugs = json.loads(results.data()[0]['node.predictions'])
             
-            return [{'score':drug[1], 'id': drug[0]} for drug in drugs]
+            return predicted_drugs
+        
+        def commit_known_drug_query(tx, disease_id):
+            query = (
+                'MATCH (:disease { id: $id })-[e:rev_indication]->(node:drug) '
+                'RETURN node.id'
+            )
+            results = tx.run(query, id=disease_id)
 
-        drugs = self.session.read_transaction(
-            commit_drugs_query, disease_id)
+            return list(set([k[0] for k in results])) # set to remove duplicate
+        
+
+        predicted_drugs = self.session.read_transaction(
+            commit_pred_drugs_query, disease_id)
+        
+        
+        known_drugs = self.session.read_transaction(commit_known_drug_query, disease_id)
+
+        drugs = [ { 'score':drug[1], 'id': drug[0], "known": True if drug[0] in known_drugs else False } for drug in predicted_drugs]
+
         self.current_disease = disease_id
         self.drugs = drugs
 
