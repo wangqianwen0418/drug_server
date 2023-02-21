@@ -185,7 +185,8 @@ class Neo4jApp:
     def remove_prediction(self):
         if not self.session:
             self.create_session()
-        query = ('match (:disease)-[e:Prediction]->(:drug) delete e')
+        # query = ('match (:disease)-[e:Prediction]->(:drug) delete e')
+        query = ('match (n:disease) remove n.predictions')
         self.session.run(query)
 
     def add_prediction(self, filename='result.pkl'):
@@ -337,6 +338,7 @@ class Neo4jApp:
             return children
 
         children = []
+
         for i in range(len(results)):
             children = insertChild(children, results[i], 0, [node_id])
 
@@ -349,7 +351,7 @@ class Neo4jApp:
         query = (
             'UNWIND $nodes as root_node '
             'MATCH  (node: {node_type} {{ id: root_node.id }})<-[rel]-(neighbor) '
-            'WHERE NOT (node)-[:Prediction]-(neighbor) '
+            # 'WHERE NOT (node)-[:Prediction]-(neighbor) '
             'WITH node, neighbor, rel '
             'ORDER BY (rel.layer1_att + rel.layer2_att ) DESC '
             'WITH node, '
@@ -358,7 +360,8 @@ class Neo4jApp:
             'WITH node, '
             'neighbor_and_rel[0] AS neighbor, '
             'neighbor_and_rel[1] AS rel '
-            'MATCH(neighbor)<-[rel2]-(neighbor2) WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
+            'MATCH(neighbor)<-[rel2]-(neighbor2) '
+            # 'WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
             'WITH node, neighbor, rel, neighbor2, rel2 '
             'ORDER BY rel2.layer1_att DESC '
             'WITH node, neighbor, rel, '
@@ -372,8 +375,7 @@ class Neo4jApp:
             [
                 {'node': record['node'], 'rel': 'none'},  # root node
                 {'node': record['neighbor'], 'rel': record['rel']},  # hop1
-                {'node': record['neighbor2'],
-                 'rel': record['rel2']}  # hop2
+                {'node': record['neighbor2'], 'rel': record['rel2']}  # hop2
             ]
             for record in results
         ]
