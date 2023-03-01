@@ -11,7 +11,7 @@ import json
 
 from config import SERVER_ROOT
 from mykeys import get_keys
-#%%
+# %%
 from flask import current_app, g
 
 
@@ -23,7 +23,7 @@ def get_db():
     return g.db
 
 
-#%%
+# %%
 class Neo4jApp:
     k1 = 12  # upper limit of children for root node
     k2 = 7  # upper limit of children for hop-1 nodes
@@ -45,9 +45,8 @@ class Neo4jApp:
         self.batch_size = 5000
         # self.data_path = 'https://drug-gnn-models.s3.us-east-2.amazonaws.com/collaboration_delivery/'
 
-
-
-        (uri, user, password, datapath, database) = get_keys(server, password, user, datapath, database)
+        (uri, user, password, datapath, database) = get_keys(
+            server, password, user, datapath, database)
         self.data_path = datapath
         self.database = database
 
@@ -104,7 +103,7 @@ class Neo4jApp:
         self.add_prediction()
         print('database initialization finished')
 
-    def build_attention(self, filename='test_attention.csv'):
+    def build_attention(self, filename='graphmask_output_indication.csv'):
 
         if not self.session:
             self.create_session()
@@ -189,7 +188,7 @@ class Neo4jApp:
         query = ('match (n:disease) remove n.predictions')
         self.session.run(query)
 
-    def add_prediction(self, filename='result.pkl'):
+    def add_prediction(self, filename='full_graph_split1_eval.pkl'):
 
         if not self.session:
             self.create_session()
@@ -208,8 +207,8 @@ class Neo4jApp:
 
         lines = []
 
-        for disease in prediction["rev_indication"]:
-            drugs = prediction["rev_indication"][disease]
+        for disease in prediction:
+            drugs = prediction[disease]
             top_drugs = sorted(
                 drugs.items(), key=lambda item: item[1], reverse=True
             )[:Neo4jApp.top_n]
@@ -220,7 +219,8 @@ class Neo4jApp:
                 lines = []
             else:
                 lines += [
-                    {'disease_id': disease, 'predictions': json.dumps([ [drug[0], float(drug[1])] for drug in top_drugs])} # drug[:2] -> drug_id, score
+                    {'disease_id': disease, 'predictions': json.dumps(
+                        [[drug[0], float(drug[1])] for drug in top_drugs])}  # drug[:2] -> drug_id, score
                 ]
         self.session.write_transaction(commit_batch_prediction, lines=lines)
 
@@ -243,12 +243,14 @@ class Neo4jApp:
                 'RETURN node.id'
             )
             results = tx.run(query)
-            return list(set([k[0] for k in results])) # set to remove duplicate
-        
-        all_disease = self.session.read_transaction(commit_diseases_query)
-        treatable_diseases = self.session.read_transaction(commit_treatable_diseases_query)
+            # set to remove duplicate
+            return list(set([k[0] for k in results]))
 
-        return [ [ d, True if d in treatable_diseases else False] for d in all_disease] 
+        all_disease = self.session.read_transaction(commit_diseases_query)
+        treatable_diseases = self.session.read_transaction(
+            commit_treatable_diseases_query)
+
+        return [[d, True if d in treatable_diseases else False] for d in all_disease]
 
     def query_predicted_drugs(self, disease_id, top_n):
 
@@ -262,11 +264,11 @@ class Neo4jApp:
                 'RETURN node.predictions'
             )
             results = tx.run(query, id=disease_id, top_n=top_n)
-            
+
             predicted_drugs = json.loads(results.data()[0]['node.predictions'])
-            
+
             return predicted_drugs
-        
+
         def commit_known_drug_query(tx, disease_id):
             query = (
                 'MATCH (:disease { id: $id })-[e:rev_indication]->(node:drug) '
@@ -274,17 +276,18 @@ class Neo4jApp:
             )
             results = tx.run(query, id=disease_id)
 
-            return list(set([k[0] for k in results])) # set to remove duplicate
-        
+            # set to remove duplicate
+            return list(set([k[0] for k in results]))
 
         predicted_drugs = self.session.read_transaction(
             commit_pred_drugs_query, disease_id)
-        
-        
-        known_drugs = self.session.read_transaction(commit_known_drug_query, disease_id)
 
-        drugs = [ 
-            { 'score':drug[1], 'id': drug[0], "known": True if drug[0] in known_drugs else False } 
+        known_drugs = self.session.read_transaction(
+            commit_known_drug_query, disease_id)
+
+        drugs = [
+            {'score': drug[1], 'id': drug[0],
+                "known": True if drug[0] in known_drugs else False}
             for drug in predicted_drugs[:top_n]
         ]
 
@@ -320,10 +323,10 @@ class Neo4jApp:
                     edgeInfo = ''
                 elif depth == 1:
                     score = (rel['layer1_att'] + rel['layer2_att'])
-                    edgeInfo = rel['edge_info'] if rel['edge_info']  else rel.type
+                    edgeInfo = rel['edge_info'] if rel['edge_info'] else rel.type
                 else:
                     score = (rel['layer1_att'])
-                    edgeInfo = rel['edge_info'] if rel['edge_info']  else rel.type
+                    edgeInfo = rel['edge_info'] if rel['edge_info'] else rel.type
                 children.append({
                     'nodeId': node['id'],
                     'nodeType': Neo4jApp.get_node_labels(node)[0],
@@ -402,7 +405,7 @@ class Neo4jApp:
             Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}])
 
         def convert(e, i):
-            return {'edgeInfo': e['edge_info'] if e['edge_info']  else e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
+            return {'edgeInfo': e['edge_info'] if e['edge_info'] else e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
 
         paths = []
         existing_path = []
@@ -538,7 +541,9 @@ class Neo4jApp:
 
 # %%
 
+
 if __name__ == '__main__':
-    db = Neo4jApp(server='txgnn', user='neo4j',password = 'neo4jpassword', database='neo4j')
+    db = Neo4jApp(server='txgnn', user='neo4j', password='neo4jpassword',
+                  database='neo4j', datapath='TxGNNExplorer')
     db.init_database()
 # %%
