@@ -8,7 +8,9 @@
 __pycache__/
 build/
 data/
+txgnn_data/
 colab_delivery/*
+TxGNNExplorer/
 !colab_delivery/*.py
 node_emb_disease_sim/
 *.pem
