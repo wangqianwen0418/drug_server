@@ -27,6 +27,7 @@ def get_db():
 class Neo4jApp:
     k1 = 12  # upper limit of children for root node
     k2 = 7  # upper limit of children for hop-1 nodes
+    path_thr = 45  # upper limit of path numbers
     top_n = 500  # write the predicted top n drugs to the graph database
 
     def __init__(self, server, password='reader_password', user='reader', datapath='./colab_delivery/', database='drug'):
@@ -250,7 +251,9 @@ class Neo4jApp:
         treatable_diseases = self.session.read_transaction(
             commit_treatable_diseases_query)
 
-        return [[d, True if d in treatable_diseases else False] for d in all_disease]
+        results = [[d, True if d in treatable_diseases else False]
+                   for d in all_disease]
+        return results
 
     def query_predicted_drugs(self, disease_id, top_n):
 
@@ -345,20 +348,23 @@ class Neo4jApp:
         for i in range(len(results)):
             children = insertChild(children, results[i], 0, [node_id])
 
-        tree = children[0]
-        return tree
+        if len(children) == 0:
+            return {}
+        return children[0]
 
     @staticmethod
-    def commit_batch_attention_query(tx, node_type, root_nodes):
+    def commit_batch_attention_query(tx, node_type, root_nodes, k1, k2):
 
         query = (
-            'UNWIND $nodes as root_node '
-            'MATCH  (node: {node_type} {{ id: root_node.id }})<-[rel]-(neighbor) '
+            'UNWIND $nodes as root_node ',
+            'MATCH  (node: {node_type} {{ id: root_node.id }})<-[rel]-(neighbor) '.format(
+                node_type=node_type),
             # 'WHERE NOT (node)-[:Prediction]-(neighbor) '
             'WITH node, neighbor, rel '
             'ORDER BY (rel.layer1_att + rel.layer2_att ) DESC '
-            'WITH node, '
-            'collect([ neighbor, rel])[0..{k1}] AS neighbors_and_rels '
+            'WITH node, ',
+            'collect([ neighbor, rel])[0..{k1}] AS neighbors_and_rels '.format(
+                k1=k1) if k1 else 'collect([ neighbor, rel]) AS neighbors_and_rels ',
             'UNWIND neighbors_and_rels AS neighbor_and_rel '
             'WITH node, '
             'neighbor_and_rel[0] AS neighbor, '
@@ -367,11 +373,14 @@ class Neo4jApp:
             # 'WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
             'WITH node, neighbor, rel, neighbor2, rel2 '
             'ORDER BY rel2.layer1_att DESC '
-            'WITH node, neighbor, rel, '
-            'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '
+            'WITH node, neighbor, rel, ',
+            'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '.format(
+                k2=k2) if k2 else 'collect([neighbor2, rel2]) AS neighbors_and_rels2 ',
             'UNWIND neighbors_and_rels2 AS neighbor_and_rel2 '
             'RETURN node, neighbor, rel, neighbor_and_rel2[0] AS neighbor2, neighbor_and_rel2[1] AS rel2 '
-        ).format(node_type=node_type, k1=Neo4jApp.k1, k2=Neo4jApp.k2)
+        )
+
+        query = ' '.join(query)
 
         results = tx.run(query, nodes=root_nodes)
         results = [
@@ -389,7 +398,9 @@ class Neo4jApp:
             self.create_session()
 
         results = self.session.read_transaction(
-            Neo4jApp.commit_batch_attention_query, node_type, [{'id': node_id}])
+            Neo4jApp.commit_batch_attention_query, node_type, [{'id': node_id}], Neo4jApp.k1, Neo4jApp.k2)
+
+        # print('attention results', results, node_id, node_type)
 
         tree = self.get_tree(results, node_type, node_id)
 
@@ -400,9 +411,25 @@ class Neo4jApp:
             self.create_session()
 
         drug_paths = self.session.read_transaction(
-            Neo4jApp.commit_batch_attention_query, "drug", [{'id': drug_id}])
+            Neo4jApp.commit_batch_attention_query, "drug", [{'id': drug_id}], 40, 40)
+
         disease_paths = self.session.read_transaction(
-            Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}])
+            Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}], 40, 40)
+
+        # def topk_paths(paths, k):
+        #     '''
+        #     Params:
+        #     path: Array<[{node, rel}, [node, rel]]>
+        #     k: top k
+        #     Return: top k paths
+        #     '''
+        #     if k is None:
+        #         return paths
+        #     paths.sort(key=lambda x: x[1]['rel']['layer2_att']+x[1]['rel']
+        #                ['layer1_att'] + x[2]['rel']['layer1_att'], reverse=True)
+        #     return paths[:k]
+        # drug_paths = topk_paths(drug_paths, Neo4jApp.k1 * Neo4jApp.k2)
+        # disease_paths = topk_paths(disease_paths, Neo4jApp.k1 * Neo4jApp.k2)
 
         def convert(e, i):
             return {'edgeInfo': e['edge_info'] if e['edge_info'] else e.type, 'score': e['layer1_att'] + e['layer2_att'] if i == 0 else e['layer1_att']}
@@ -451,12 +478,20 @@ class Neo4jApp:
                                 paths.append(path)
 
         attention = {}
-        attention['{}:{}'.format('disease', disease_id)] = self.get_tree(
-            disease_paths, 'diseaase', disease_id)
-        attention['{}:{}'.format('drug', drug_id)] = self.get_tree(
-            drug_paths, 'drug', drug_id)
+        # attention['{}:{}'.format('disease', disease_id)] = self.get_tree(
+        #     disease_paths, 'diseaase', disease_id)
+        # attention['{}:{}'.format('drug', drug_id)] = self.get_tree(
+        #     drug_paths, 'drug', drug_id)
+        attention['{}:{}'.format('disease', disease_id)] = self.query_attention(
+            disease_id, 'disease')
+        attention['{}:{}'.format('drug', drug_id)
+                  ] = self.query_attention(drug_id, 'drug')
 
-        return {'attention': attention, "paths": paths}
+        # sort paths by score
+        paths.sort(key=lambda x: sum(
+            [e['score'] for e in x['edges']]), reverse=True)
+
+        return {'attention': attention, "paths": paths[:Neo4jApp.path_thr]}
 
     @staticmethod
     def get_node_labels(node):
