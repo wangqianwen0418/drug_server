@@ -3,4 +3,5 @@ colab_delivery/
 __pycache__/
 model.py 
 model_loader.py
+TxGNNExplorer/
 *.pem

@@ -411,10 +411,10 @@ class Neo4jApp:
             self.create_session()
 
         drug_paths = self.session.read_transaction(
-            Neo4jApp.commit_batch_attention_query, "drug", [{'id': drug_id}], 40, 40)
+            Neo4jApp.commit_batch_attention_query, "drug", [{'id': drug_id}], 40, 30)
 
         disease_paths = self.session.read_transaction(
-            Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}], 40, 40)
+            Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}], 40, 30)
 
         # def topk_paths(paths, k):
         #     '''
