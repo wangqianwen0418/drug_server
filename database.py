@@ -411,10 +411,10 @@ class Neo4jApp:
             self.create_session()
 
         drug_paths = self.session.read_transaction(
-            Neo4jApp.commit_batch_attention_query, "drug", [{'id': drug_id}], 40, 30)
+            Neo4jApp.commit_batch_attention_query, "drug", [{'id': drug_id}], 30, 20)
 
         disease_paths = self.session.read_transaction(
-            Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}], 40, 30)
+            Neo4jApp.commit_batch_attention_query, "disease", [{'id': disease_id}], Neo4jApp.k1, Neo4jApp.k2)
 
         # def topk_paths(paths, k):
         #     '''
@@ -489,7 +489,7 @@ class Neo4jApp:
 
         # sort paths by score
         paths.sort(key=lambda x: sum(
-            [e['score'] for e in x['edges']]), reverse=True)
+            [e['score'] for e in x['edges']])/len(x['edges']), reverse=True)
 
         return {'attention': attention, "paths": paths[:Neo4jApp.path_thr]}
 
