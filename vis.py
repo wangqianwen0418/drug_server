@@ -37,7 +37,7 @@ def send_index(model):
         return send_from_directory(current_app.config['FRONT_ROOT'], model)
 
 
-@vis.route('/txgnn_data/<path:path>', methods=['GET', 'OPTIONS'])
+@vis.route('/txgnn_data_v2/<path:path>', methods=['GET', 'OPTIONS'])
 def send_data(path):
     '''
     requested data fileds will be downloaded in the local web browser.

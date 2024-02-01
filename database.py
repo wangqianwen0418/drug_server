@@ -25,10 +25,14 @@ def get_db():
 
 # %%
 class Neo4jApp:
-    k1 = 12  # upper limit of children for root node
-    k2 = 7  # upper limit of children for hop-1 nodes
+    k1 = 10  # upper limit of children for root node
+    k2 = 10  # upper limit of children for hop-1 nodes
     path_thr = 45  # upper limit of path numbers
     top_n = 500  # write the predicted top n drugs to the graph database
+    # # Removed from graph base to reduce computation time
+    not_cool_node_pre = ['CYP']
+    not_cool_rel = ['rev_contraindication', 'contraindication', 'drug_drug', 'rev_off-label use', 'off-label use', 'anatomy_protein_absent', 'rev_anatomy_protein_absent']
+
 
     def __init__(self, server, password='reader_password', user='reader', datapath='./colab_delivery/', database='drug'):
         self.node_types = [
@@ -82,6 +86,14 @@ class Neo4jApp:
             self.session.write_transaction(delete_all, node_type)
         print('delete all nodes')
 
+    def remove_not_cool_nodes_edges(self):
+        for pre in Neo4jApp.not_cool_node_pre:
+            self.session.write_transaction(
+                    lambda tx: tx.run('MATCH (n: `gene/protein`) WHERE n.name STARTS WITH "{}" DETACH DELETE n'.format(pre)))
+        for rel in Neo4jApp.not_cool_rel:
+            self.session.write_transaction(
+                lambda tx: tx.run('MATCH ()-[r:{}]-() DELETE r'.format(rel)))
+
     def create_index(self):
 
         if not self.session:
@@ -99,20 +111,24 @@ class Neo4jApp:
         self.clean_database()
         self.create_index()
         print('build attention graph...')
-        self.build_attention()
+        self.build_attention('graphmask_output_indication.csv')
         print('add predictions...')
         self.add_prediction()
         print('database initialization finished')
 
-    def build_attention(self, filename='graphmask_output_indication.csv'):
+    def build_attention(self, filename):
 
         if not self.session:
             self.create_session()
 
         attention_path = os.path.join(self.data_path, filename)
         print('read attention file')
-        attentions = pd.read_csv(attention_path, dtype={
-            'x_id': 'string', 'y_id': 'string'})
+        if filename.endswith('.csv'):
+            attentions = pd.read_csv(attention_path, dtype={
+                'x_id': 'string', 'y_id': 'string'})
+        elif filename.endswith('pkl'):
+            attentions = pd.read_pickle(attention_path)
+
 
         lines = []
         x_type = ''
@@ -578,7 +594,7 @@ class Neo4jApp:
 
 
 if __name__ == '__main__':
-    db = Neo4jApp(server='txgnn', user='neo4j', password='neo4jpassword',
-                  database='neo4j', datapath='TxGNNExplorer')
+    db = Neo4jApp(server='txgnn_v2', user='neo4j', 
+                  database='neo4j', datapath='TxGNNExplorer_v2')
     db.init_database()
 # %%
