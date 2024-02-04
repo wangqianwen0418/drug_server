@@ -291,7 +291,7 @@ class Neo4jApp:
             )
             results = tx.run(query, id=disease_id)
 
-            predicted_drugs = json.loads(results.data()[0]['node.predictions'])[query_n]
+            predicted_drugs = json.loads(results.data()[0]['node.predictions'])[:query_n]
 
             return predicted_drugs
 
