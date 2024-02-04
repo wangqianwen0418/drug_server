@@ -28,7 +28,7 @@ class Neo4jApp:
     k1 = 10  # upper limit of children for root node
     k2 = 10  # upper limit of children for hop-1 nodes
     path_thr = 45  # upper limit of path numbers
-    top_n = 500  # write the predicted top n drugs to the graph database
+    top_n = 200  # write the predicted top n drugs to the graph database
     # # Removed from graph base to reduce computation time
     not_cool_node_pre = ['CYP']
     not_cool_rel = ['rev_contraindication', 'contraindication', 'drug_drug', 'rev_off-label use', 'off-label use', 'anatomy_protein_absent', 'rev_anatomy_protein_absent']
@@ -87,12 +87,15 @@ class Neo4jApp:
         print('delete all nodes')
 
     def remove_not_cool_nodes_edges(self):
+        if not self.session:
+            self.create_session()
+
         for pre in Neo4jApp.not_cool_node_pre:
             self.session.write_transaction(
                     lambda tx: tx.run('MATCH (n: `gene/protein`) WHERE n.name STARTS WITH "{}" DETACH DELETE n'.format(pre)))
         for rel in Neo4jApp.not_cool_rel:
             self.session.write_transaction(
-                lambda tx: tx.run('MATCH ()-[r:{}]-() DELETE r'.format(rel)))
+                lambda tx: tx.run('MATCH ()-[r:{}]->() DELETE r'.format(rel)))
 
     def create_index(self):
 
@@ -210,6 +213,9 @@ class Neo4jApp:
         if not self.session:
             self.create_session()
 
+        drugs_with_indication = pd.read_pickle(os.path.join(
+            self.data_path, 'drug_indication_subset.pkl'))
+
         prediction = pd.read_pickle(os.path.join(
             self.data_path, filename))['prediction']
 
@@ -226,8 +232,9 @@ class Neo4jApp:
 
         for disease in prediction:
             drugs = prediction[disease]
+            drugs = [k for k in drugs.items() if k[0] in drugs_with_indication]
             top_drugs = sorted(
-                drugs.items(), key=lambda item: item[1], reverse=True
+                drugs, key=lambda item: item[1], reverse=True
             )[:Neo4jApp.top_n]
 
             if len(lines) >= self.batch_size:
@@ -271,7 +278,7 @@ class Neo4jApp:
                    for d in all_disease]
         return results
 
-    def query_predicted_drugs(self, disease_id, top_n):
+    def query_predicted_drugs(self, disease_id, query_n):
 
         def commit_pred_drugs_query(tx, disease_id):
             # query = (
@@ -282,9 +289,9 @@ class Neo4jApp:
                 'MATCH (node:disease { id: $id })'
                 'RETURN node.predictions'
             )
-            results = tx.run(query, id=disease_id, top_n=top_n)
+            results = tx.run(query, id=disease_id)
 
-            predicted_drugs = json.loads(results.data()[0]['node.predictions'])
+            predicted_drugs = json.loads(results.data()[0]['node.predictions'])[query_n]
 
             return predicted_drugs
 
@@ -307,7 +314,7 @@ class Neo4jApp:
         drugs = [
             {'score': drug[1], 'id': drug[0],
                 "known": True if drug[0] in known_drugs else False}
-            for drug in predicted_drugs[:top_n]
+            for drug in predicted_drugs
         ]
 
         self.current_disease = disease_id
