@@ -26,12 +26,13 @@ def get_db():
 # %%
 class Neo4jApp:
     k1 = 5  # upper limit of children for root node
-    k2 = 4  # upper limit of children for hop-1 nodes
-    path_thr = 45  # upper limit of path numbers
+    k2 = 5  # upper limit of children for hop-1 nodes
+    # path_thr = 45  # upper limit of path numbers
+    path_thr = 5  # upper limit for each metapath
     top_n = 200  # write the predicted top n drugs to the graph database
     # # Removed from graph base to reduce computation time
     not_cool_node_pre = ['CYP']
-    not_cool_rel = ['rev_contraindication', 'contraindication', 'drug_drug', 'rev_off-label use', 'off-label use', 'anatomy_protein_absent', 'rev_anatomy_protein_absent']
+    not_cool_rel = ['rev_contraindication', 'contraindication', 'drug_drug', 'rev_off-label use', 'off-label use', 'anatomy_protein_absent', 'rev_anatomy_protein_absent', 'disease_phenotype_negative', 'rev_disease_phenotype_negative']
 
 
     def __init__(self, server, password='reader_password', user='reader', datapath='./colab_delivery/', database='drug'):
@@ -384,7 +385,7 @@ class Neo4jApp:
                 node_type=node_type, rel1=rel1),
             # 'WHERE NOT (node)-[:Prediction]-(neighbor) '
             'WITH node, neighbor, rel '
-            'ORDER BY (rel.layer1_att + rel.layer2_att ) DESC '
+            'ORDER BY (rel.layer1_att + rel.layer2_att + coalesce(rel.case_att, 0) ) DESC '
             'WITH node, ',
             'collect([ neighbor, rel])[0..{k1}] AS neighbors_and_rels '.format(
                 k1=k1) if k1 else 'collect([ neighbor, rel]) AS neighbors_and_rels ',
@@ -395,7 +396,7 @@ class Neo4jApp:
             'MATCH(neighbor)<-[rel2: {rel2}]-(neighbor2) '.format(rel2=rel2),
             # 'WHERE NOT (neighbor)-[:Prediction]-(neighbor2) '
             'WITH node, neighbor, rel, neighbor2, rel2 '
-            'ORDER BY rel2.layer1_att DESC '
+            'ORDER BY (rel2.layer1_att + coalesce(rel2.case_att, 0) ) DESC '
             'WITH node, neighbor, rel, ',
             'collect([neighbor2, rel2])[0..{k2}] AS neighbors_and_rels2 '.format(
                 k2=k2) if k2 else 'collect([neighbor2, rel2]) AS neighbors_and_rels2 ',
@@ -443,8 +444,6 @@ class Neo4jApp:
                 Neo4jApp.commit_batch_attention_query, node_type, [{'id': node_id}], Neo4jApp.k1, Neo4jApp.k2, rel1, rel2)
  
             results += res
-
-        # print('attention results', results, node_id, node_type)
 
         tree = self.get_tree(results, node_type, node_id)
 
@@ -523,15 +522,29 @@ class Neo4jApp:
 
                                 path = {
                                     'nodes': nodes,
-                                    'edges': edges
+                                    'edges': edges,
+                                    'avg_score': sum([e['score'] for e in edges])/len(edges)
                                 }
                                 paths.append(path)
+        
+        # for all paths, keep top n for each metapath based on path score
+        metapaths = {}
+        for path in paths:
+            metapath = '-'.join([node['nodeType'] for node in path['nodes']])
+            if metapath in metapaths:
+                metapaths[metapath].append(path)
+                metapaths[metapath].sort(key=lambda x: x['avg_score'], reverse=True)
+                if len(metapaths[metapath]) > Neo4jApp.path_thr:
+                    metapaths[metapath] = metapaths[metapath][:Neo4jApp.path_thr]
+            else:
+                metapaths[metapath] = [path]
+
+        # flatten metapaths
+        sorted_paths = []
+        for metapath in metapaths:
+            sorted_paths += metapaths[metapath]
 
         attention = {}
-        # attention['{}:{}'.format('disease', disease_id)] = self.get_tree(
-        #     disease_paths, 'diseaase', disease_id)
-        # attention['{}:{}'.format('drug', drug_id)] = self.get_tree(
-        #     drug_paths, 'drug', drug_id)
         attention['{}:{}'.format('disease', disease_id)] = disease_tree
         attention['{}:{}'.format('drug', drug_id)
                   ] = drug_tree
@@ -540,7 +553,7 @@ class Neo4jApp:
         paths.sort(key=lambda x: sum(
             [e['score'] for e in x['edges']])/len(x['edges']), reverse=True)
 
-        return {'attention': attention, "paths": paths[:Neo4jApp.path_thr]}
+        return {'attention': attention, "paths": sorted_paths}
 
     @staticmethod
     def get_node_labels(node):
