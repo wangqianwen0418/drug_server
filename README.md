@@ -17,7 +17,7 @@ entry point is application.py
 initialize eb CLI repo
 
 ```
-eb init -p python-3.6 drug-server --region us-east-2
+eb init -p python-3.7 drug-server --region us-east-2
 ```
 
 create environment and deploy the application

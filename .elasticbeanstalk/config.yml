@@ -1,9 +1,9 @@
 branch-defaults:
   default:
-    environment: txgnn-env
+    environment: null
     group_suffix: null
 global:
-  application_name: txgnn-demo
+  application_name: drug-server
   branch: null
   default_ec2_keyname: Neo4j-AWS-EC2-Key
   default_platform: Python 3.7
@@ -12,7 +12,7 @@ global:
   instance_profile: null
   platform_name: null
   platform_version: null
-  profile: eb-cli
+  profile: landingzone
   repository: null
   sc: null
   workspace_type: Application
