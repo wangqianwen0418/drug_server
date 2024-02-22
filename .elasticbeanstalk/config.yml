@@ -3,16 +3,16 @@ branch-defaults:
     environment: txgnn-env
     group_suffix: null
 global:
-  application_name: txgnn-demo
+  application_name: txgnn
   branch: null
-  default_ec2_keyname: Neo4j-AWS-EC2-Key
-  default_platform: Python 3.7
+  default_ec2_keyname: null
+  default_platform: Python 3.8
   default_region: us-east-2
   include_git_submodules: true
   instance_profile: null
   platform_name: null
   platform_version: null
-  profile: eb-cli
+  profile: landingzone
   repository: null
   sc: null
   workspace_type: Application
